@@ -5,20 +5,22 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-import numpy as np
 import copy
 import math
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 def gelu(x):
     """Implementation of the gelu activation function.
-        For information: OpenAI GPT's gelu is slightly different
-        (and gives slightly different results):
-        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) *
-        (x + 0.044715 * torch.pow(x, 3))))
-        Also see https://arxiv.org/abs/1606.08415
+    For information: OpenAI GPT's gelu is slightly different
+    (and gives slightly different results):
+    0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) *
+    (x + 0.044715 * torch.pow(x, 3))))
+    Also see https://arxiv.org/abs/1606.08415
     """
     return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
@@ -32,8 +34,7 @@ ACT2FN = {"gelu": gelu, "relu": F.relu, "swish": swish}
 
 class LayerNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-12):
-        """Construct a layernorm module in the TF style (epsilon inside the square root).
-        """
+        """Construct a layernorm module in the TF style (epsilon inside the square root)."""
         super(LayerNorm, self).__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.bias = nn.Parameter(torch.zeros(hidden_size))
@@ -47,8 +48,7 @@ class LayerNorm(nn.Module):
 
 
 class Embeddings(nn.Module):
-    """Construct the embeddings from item, position.
-    """
+    """Construct the embeddings from item, position."""
 
     def __init__(self, args):
         super(Embeddings, self).__init__()
@@ -188,5 +188,3 @@ class Encoder(nn.Module):
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
-
-

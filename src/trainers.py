@@ -6,17 +6,17 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
 
-import numpy as np
-from tqdm import tqdm
 import random
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
-from utils import recall_at_k, ndcg_k, get_metric
-from models import KMeans
+from tqdm import tqdm
 
+from models import KMeans
+from utils import get_metric, ndcg_k, recall_at_k
 
 
 class Trainer:
@@ -215,7 +215,7 @@ class ICSRecTrainer(Trainer):
                 for i, (rec_batch) in rec_cf_data_iter:
                     """
                     rec_batch shape: key_name x batch_size x feature_dim
-                    cl_batches shape: 
+                    cl_batches shape:
                         list of n_views x batch_size x feature_dim tensors
                     """
                     # 0. batch_data will be sent into the device(GPU or CPU)
@@ -250,7 +250,7 @@ class ICSRecTrainer(Trainer):
             rec_cf_data_iter = tqdm(enumerate(dataloader), total=len(dataloader))
 
             for i, (rec_batch) in rec_cf_data_iter:
-                """             
+                """
                 rec_batch shape: key_name x batch_size x feature_dim
                 """
                 # 0. batch_data will be sent into the device(GPU or CPU)

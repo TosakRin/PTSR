@@ -5,20 +5,20 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
+import copy
 import math
 import os
 import pickle
-from tqdm import tqdm
 import random
-import copy
+import time
 
+import faiss
+import gensim
 import torch
 import torch.nn as nn
-import gensim
-import faiss
-import time
-from modules import Encoder, LayerNorm
+from tqdm import tqdm
 
+from modules import Encoder, LayerNorm
 
 
 class KMeans(object):

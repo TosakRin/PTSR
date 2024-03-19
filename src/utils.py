@@ -6,16 +6,16 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
 
-import numpy as np
-import math
-import random
-import os
 import json
+import math
+import os
 import pickle
-from scipy.sparse import csr_matrix
+import random
 
+import numpy as np
 import torch
 import torch.nn.functional as F
+from scipy.sparse import csr_matrix
 
 
 def set_seed(seed):
@@ -38,7 +38,9 @@ def nCr(n, r):
 def check_path(path):
     if not os.path.exists(path):
         os.makedirs(path)
-        print(f"{path} created")
+        print(f">>> {path} not exist, just created")
+    else:
+        print(f"{path} exist")
 
 
 def neg_sample(item_set, item_size):  # []
@@ -152,7 +154,7 @@ def generate_rating_matrix_test(user_seq, num_users, num_items):
 def get_user_seqs(data_file):
     lines = open(data_file).readlines()
     user_seq = []
-    user_id=[]
+    user_id = []
     item_set = set()
     for line in lines:
         user, items = line.strip().split(" ", 1)
@@ -163,10 +165,10 @@ def get_user_seqs(data_file):
         item_set = item_set | set(items)
     max_item = max(item_set)
     num_users = len(lines)
-    num_items=max_item+2
+    num_items = max_item + 2
     valid_rating_matrix = generate_rating_matrix_valid(user_seq, num_users, num_items)
     test_rating_matrix = generate_rating_matrix_test(user_seq, num_users, num_items)
-    return user_id,user_seq, max_item, valid_rating_matrix, test_rating_matrix
+    return user_id, user_seq, max_item, valid_rating_matrix, test_rating_matrix
 
 
 def get_user_seqs_long(data_file):
