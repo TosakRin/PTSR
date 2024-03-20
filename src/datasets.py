@@ -9,6 +9,7 @@ import copy
 import os
 import pickle
 import random
+from ast import literal_eval
 
 import torch
 from torch.utils.data import Dataset
@@ -77,7 +78,7 @@ class RecWithContrastiveLearningDataset(Dataset):
 
         # create target item sets
         self.sem_tag = Generate_tag(self.args.data_dir, self.args.data_name, self.args.data_dir)
-        self.train_tag = self.sem_tag.get_data(self.args.data_dir + "/" + self.args.data_name + "_1_t.pkl", "train")
+        self.train_tag = self.sem_tag.get_data(f"{self.args.data_dir}/{self.args.data_name}_1_t.pkl", "train")
         self.true_user_id, _, _, _, _ = get_user_seqs(args.train_data_file)
 
     def _data_sample_rec_task(self, user_id, items, input_ids, target_pos, answer):
@@ -134,7 +135,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         insert_nums = max(int(self.args.noise_ratio * len(copied_sequence)), 0)
         if insert_nums == 0:
             return copied_sequence
-        insert_idx = random.choices([i for i in range(len(copied_sequence))], k=insert_nums)
+        insert_idx = random.choices(list(range(len(copied_sequence))), k=insert_nums)
         inserted_sequence = []
         for index, item in enumerate(copied_sequence):
             if index in insert_idx:
@@ -163,9 +164,8 @@ class RecWithContrastiveLearningDataset(Dataset):
             for t_ in temp:
                 if t_[1:] == items[:-3]:
                     continue
-                else:
-                    target_pos_ = t_[1:]
-                    flag = True
+                target_pos_ = t_[1:]
+                flag = True
             if not flag:
                 target_pos_ = random.choice(temp)[1:]
             seq_label_signal = items[-2]  # no use
@@ -181,14 +181,11 @@ class RecWithContrastiveLearningDataset(Dataset):
             answer = [items_with_noise[-1]]
         if self.data_type == "train":
             target_pos = (target_pos, target_pos_)
-            cur_rec_tensors = self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
-            return cur_rec_tensors
+            return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
         elif self.data_type == "valid":
-            cur_rec_tensors = self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
-            return cur_rec_tensors
+            return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
         else:
-            cur_rec_tensors = self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
-            return cur_rec_tensors
+            return self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
 
     def __len__(self):
         """
@@ -197,86 +194,66 @@ class RecWithContrastiveLearningDataset(Dataset):
         return len(self.user_seq)
 
 
-# Dynamic Segmentation operations
-def DS_default(i_file, o_file):
-    """
-    :param i_file: original data
-    :param o_file: output data
-    :return:
-    """
-    with open(i_file, "r+") as fr:
-        data = fr.readlines()
-    aug_d = {}
-    for d_ in data:
-        u_i, item = d_.split(" ", 1)
-        item = item.split(" ")
-        item[-1] = str(eval(item[-1]))
-        aug_d.setdefault(u_i, [])
-        start = 0
-        j = 3
-        if len(item) > 53:
-            while start < len(item) - 52:
-                j = start + 4
-                while j < len(item):
-                    if start < 1 and j - start < 53:
-                        aug_d[u_i].append(item[start:j])
-                        j += 1
-                    else:
-                        aug_d[u_i].append(item[start : start + 53])
-                        break
-                start += 1
-        else:
-            while j < len(item):
-                aug_d[u_i].append(item[start : j + 1])
-                j += 1
-    with open(o_file, "w+") as fw:
-        for u_i in aug_d:
-            for i_ in aug_d[u_i]:
-                fw.write(u_i + " " + " ".join(i_) + "\n")
+def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
+    """Dynamic Segmentation operations to generate subsequence.
 
+    子序列基本逻辑:
 
-# Dynamic Segmentation operations
-def DS(i_file, o_file, max_len):
-    """
-    :param i_file: original data
-    :param o_file: output data
-    :max_len: the max length of the sequence
-    :return:
-    """
+    1. 序列长度小于等于 `max_save_len`, 以 `[start, end+1]` 生成最小子序列, 不断增加 `end`, 直到序列结束.
+    2. 序列长度大于 `max_save_len`:
+        2.1 `start < 1`, 以 `[start, end]` 生成最小子序列, 不断增加 `end`, 直到 `end` 到达序列末尾, 或者 `end - start < max_len`
+        2.2 `start >= 1`, 以 `[start, start+max_len]` 生成子序列, 不断增加 `start`, 直到 start 到达序列长度 - max_save_len
+
+    对于一个长度为 n (n>max_save_len) 的序列:
+
+    - 2.1 生成的子序列个数为 max_save_len - end, 比如 n=85, max_save_len=53, end=4, 生成的子序列个数为 53 - 4 = 49. 这 49 个子序列的开始都为 0, 结束为 3, 4, 5, ..., 51. 长度为 4, 5, 6, ..., 52.
+    - 2.2 生成的子序列个数为 n - max_keep_len, 比如 n=85, max_keep_len=52, 生成的子序列个数为 33. 这 33 个子序列的开始为 0, 1, 2, 3, ..., 32, 结束为 52, 53, 54, ..., 84. 长度都为 53.
+
+    Args:
+        i_file (str): input file path
+        o_file (str): output file path
+        max_len (int): the max length of the sequence
+    """2.1 生成的子序列个数为 max_save_len - end, 比如 n=85, max_save_len=53, end=4, 生成的子序列个数为 53 - 4 = 49. 这 49 个子序列的开始都为 0, 结束为 3, 4, 5, ..., 51.
+    print(">>> Using DS to generate subsequence ...")
+    # ========== read original sequence ==========
     with open(i_file, "r+", encoding="utf-8") as fr:
-        data = fr.readlines()
-    aug_d = {}
+        seq_list = fr.readlines()
+    subseq_dict: dict[str, list] = {}
     # training, validation, and testing
     max_save_len = max_len + 3
     # save
     max_keep_len = max_len + 2
-    for d_ in data:
-        u_i, item = d_.split(" ", 1)
-        item = item.split(" ")
-        item[-1] = str(eval(item[-1]))
-        aug_d.setdefault(u_i, [])
+    for data in seq_list:
+        u_i, seq_str = data.split(" ", 1)
+        seq = seq_str.split(" ")
+        # ? str -> int -> str
+        seq[-1] = str(literal_eval(seq[-1]))
+        subseq_dict.setdefault(u_i, [])
         start = 0
-        j = 3
-        if len(item) > max_save_len:
+        # minimal subsequence length
+        end = 3
+        if len(seq) > max_save_len:
             # training, validation, and testing
-            while start < len(item) - max_keep_len:
-                j = start + 4
-                while j < len(item):
-                    if start < 1 and j - start < max_save_len:
-                        aug_d[u_i].append(item[start:j])
-                        j += 1
+            while start < len(seq) - max_keep_len:
+                end = start + 4
+                while end < len(seq):
+                    if start < 1 and end - start < max_save_len:
+                        subseq_dict[u_i].append(seq[start:end])
+                        end += 1
                     else:
-                        aug_d[u_i].append(item[start : start + max_save_len])
+                        subseq_dict[u_i].append(seq[start : start + max_save_len])
                         break
                 start += 1
+        #
         else:
-            while j < len(item):
-                aug_d[u_i].append(item[start : j + 1])
-                j += 1
-    with open(o_file, "w+") as fw:
-        for u_i in aug_d:
-            for i_ in aug_d[u_i]:
-                fw.write(u_i + " " + " ".join(i_) + "\n")
+            while end < len(seq):
+                subseq_dict[u_i].append(seq[start : end + 1])
+                end += 1
+    # ========== write to file ==========
+    with open(o_file, "w+", encoding="utf-8") as fw:
+        for u_i, subseq_list in subseq_dict.items():
+            for subseq in subseq_list:
+                fw.write(f"{u_i}{' '.join(subseq)}\n")
     print(f">>> DS done, written to {o_file}")
 
 
