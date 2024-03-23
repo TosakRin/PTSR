@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
+import argparse
 import copy
 import os
 import pickle
@@ -14,30 +15,46 @@ from ast import literal_eval
 import torch
 from torch.utils.data import Dataset
 
-from utils import get_user_seqs, neg_sample
+from cprint import pprint_color
+from utils import get_user_seqs
 
 
 class Generate_tag:
-    def __init__(self, data_path, data_name, save_path):
-        self.path = data_path
+    """the minimal length of the subsequence is 4, which can generate the target item for train (-3), valid (-2), and test (-1).
+
+    # * ATTENTION: the subseq[0] is User_ID, and the subseq[1:] is the real subsequence.
+    """
+
+    def __init__(self, data_dir: str, data_name: str, save_path: str) -> None:
+        """
+
+        Args:
+            data_path (str): data dir, e.g., ../data
+            data_name (str): dataset name, e.g., Beauty
+            save_path (str): save dir, e.g., ../data
+        """
+        self.data_dir = data_dir
         self.data_name = f"{data_name}_1"
         self.save_path = save_path
 
-    def generate(self):
-        data_f = f"{self.path}/{self.data_name}.txt"
-        train_dic = {}
-        valid_dic = {}
-        test_dic = {}
+    def generate(self) -> None:
+        """Generate the target item for each subsequence, and save to pkl file."""
+        # * data_f is the subsequences file
+        data_f = f"{self.data_dir}/{self.data_name}.txt"
+        train_dic: dict[int, list[list[int]]] = {}
+        valid_dic: dict[int, list[list[int]]] = {}
+        test_dic: dict[int, list[list[int]]] = {}
         with open(data_f, "r", encoding="utf-8") as fr:
-            data = fr.readlines()
-            for d_ in data:
-                items = d_.split(" ")
+            subseq_list: list[str] = fr.readlines()
+            for subseq in subseq_list:
+                items: list[str] = subseq.split(" ")
+                # * items[0] is User ID
                 tag_train = int(items[-3])
                 tag_valid = int(items[-2])
                 tag_test = int(items[-1])
-                train_temp = list(map(int, items[:-3]))
-                valid_temp = list(map(int, items[:-2]))
-                test_temp = list(map(int, items[:-1]))
+                train_temp: list[int] = list(map(int, items[:-3]))
+                valid_temp: list[int] = list(map(int, items[:-2]))
+                test_temp: list[int] = list(map(int, items[:-1]))
                 if tag_train not in train_dic:
                     train_dic.setdefault(tag_train, [])
                 train_dic[tag_train].append(train_temp)
@@ -48,47 +65,87 @@ class Generate_tag:
                     test_dic.setdefault(tag_test, [])
                 test_dic[tag_test].append(test_temp)
 
-        total_dic = {"train": train_dic, "valid": valid_dic, "test": test_dic}
-        print("Saving data to ", self.save_path)
+        total_dic: dict[str, dict[int, list[list[int]]]] = {"train": train_dic, "valid": valid_dic, "test": test_dic}
+        pprint_color(f">>> Saving target-item specific subsequence set to {self.save_path}")
         with open(f"{self.save_path}/{self.data_name}_t.pkl", "wb") as fw:
             pickle.dump(total_dic, fw)
 
-    def load_dict(self, data_path):
+    def get_data(self, data_path: str, mode="train"):
+        """get the prefix subsequence set (dict).
+
+        Args:
+            data_path (str): pkl file path
+            mode (str, optional): _description_. Defaults to "train".
+
+        Returns:
+            _type_: _description_
+        """
         if not data_path:
             raise ValueError("invalid data path")
         if not os.path.exists(data_path):
-            print("The dict not exist, generating...")
+            pprint_color("The dict not exist, generating...")
             self.generate()
         with open(data_path, "rb") as read_file:
-            data_dict = pickle.load(read_file)
-        return data_dict
-
-    def get_data(self, data_path, mode):
-        data = self.load_dict(data_path)
-        return data[mode]
+            data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
+        return data_dict[mode]
 
 
 class RecWithContrastiveLearningDataset(Dataset):
-    def __init__(self, args, user_seq, test_neg_items=None, data_type="train", similarity_model_type="offline"):
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        user_seq: list[list[int]],
+        test_neg_items=None,
+        data_type: str = "train",
+    ) -> None:
+        """torch.utils.dataDataset
+
+        Args:
+            user_seq (list[list[int]]): subseq list in the training phase and original sequence in the validation and testing phase. *Not including User_ID*.
+            test_neg_items (_type_, optional): _description_. Defaults to None.
+            data_type (str, optional): _description_. Defaults to "train".
+        """
         self.args = args
         self.user_seq = user_seq
         self.test_neg_items = test_neg_items
         self.data_type = data_type
-        self.max_len = args.max_seq_length
+        self.max_len: int = args.max_seq_length
 
         # create target item sets
         self.sem_tag = Generate_tag(self.args.data_dir, self.args.data_name, self.args.data_dir)
-        self.train_tag = self.sem_tag.get_data(f"{self.args.data_dir}/{self.args.data_name}_1_t.pkl", "train")
+        self.train_tag: dict[int, list[list[int]]] = self.sem_tag.get_data(
+            f"{self.args.data_dir}/{self.args.data_name}_1_t.pkl", mode="train"
+        )
         self.true_user_id, _, _, _, _ = get_user_seqs(args.train_data_file)
 
-    def _data_sample_rec_task(self, user_id, items, input_ids, target_pos, answer):
+    def _data_sample_rec_task(
+        self, user_id: int, items: list[int], input_ids: list[int], target_pos, answer: list[int]
+    ):
+        """Sample from dataset for SASRec.
+
+        Args:
+            user_id (int):
+            items (list[int]):
+            input_ids (list[int]): Transforer input sequence.
+            target_pos (_type_): Transformer output target sequence.
+            answer (list[int]): target item
+
+        Returns:
+            tuple:
+        """
+
         # make a deep copy to avoid original sequence be modified
         copied_input_ids = copy.deepcopy(input_ids)
+
+        # ============ input padding and truncating ============
+        # ? max_len 一定大于等于 len(input_ids) 吗?
         pad_len = self.max_len - len(copied_input_ids)
         copied_input_ids = [0] * pad_len + copied_input_ids
-        copied_input_ids = copied_input_ids[-self.max_len :]
+        copied_input_ids = copied_input_ids[-self.max_len :]  #
+        assert len(copied_input_ids) == self.max_len
 
-        if type(target_pos) == tuple:
+        # ============ target padding and truncating ============
+        if isinstance(target_pos, tuple):  # * train
             pad_len_1 = self.max_len - len(target_pos[1])
             target_pos_1 = [0] * pad_len + target_pos[0]
             target_pos_2 = [0] * pad_len_1 + target_pos[1]
@@ -96,41 +153,39 @@ class RecWithContrastiveLearningDataset(Dataset):
             target_pos_2 = target_pos_2[-self.max_len :]
             assert len(target_pos_1) == self.max_len
             assert len(target_pos_2) == self.max_len
-        else:
+        else:  # * valid and test
             target_pos = [0] * pad_len + target_pos
             target_pos = target_pos[-self.max_len :]
             assert len(target_pos) == self.max_len
 
-        assert len(copied_input_ids) == self.max_len
-        if self.test_neg_items is not None:
-            test_samples = self.test_neg_items[index]
-            cur_rec_tensors = (
-                torch.tensor(user_id, dtype=torch.long),  # user_id for testing
-                torch.tensor(copied_input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-                torch.tensor(test_samples, dtype=torch.long),
-            )
-        else:
-            if type(target_pos) == tuple:
-                cur_rec_tensors = (
-                    torch.tensor(user_id, dtype=torch.long),  # user_id for testing
+        # ============= assemble sequence to tensor =============
+        if self.test_neg_items is None:
+            return (
+                (
+                    torch.tensor(user_id, dtype=torch.long),
                     torch.tensor(copied_input_ids, dtype=torch.long),
                     torch.tensor(target_pos_1, dtype=torch.long),
                     torch.tensor(target_pos_2, dtype=torch.long),
                     torch.tensor(answer, dtype=torch.long),
                 )
-
-            else:
-                cur_rec_tensors = (
-                    torch.tensor(user_id, dtype=torch.long),  # user_id for testing
+                if isinstance(target_pos, tuple)
+                else (
+                    torch.tensor(user_id, dtype=torch.long),
                     torch.tensor(copied_input_ids, dtype=torch.long),
                     torch.tensor(target_pos, dtype=torch.long),
                     torch.tensor(answer, dtype=torch.long),
                 )
-        return cur_rec_tensors
+            )
 
-    def _add_noise_interactions(self, items):
+    def _add_noise_interactions(self, items: list[int]):
+        """Add negative interactions to the sequence for robustness analysis.
+
+        Args:
+            items (list[int]): _description_
+
+        Returns:
+            _type_: _description_
+        """
         copied_sequence = copy.deepcopy(items)
         insert_nums = max(int(self.args.noise_ratio * len(copied_sequence)), 0)
         if insert_nums == 0:
@@ -146,30 +201,54 @@ class RecWithContrastiveLearningDataset(Dataset):
             inserted_sequence += [item]
         return inserted_sequence
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int):
+        """_summary_
+
+        [0, 1, 2, 3, 4, 5, 6]
+
+        train [0, 1, 2, 3]
+        target [1, 2, 3, 4]
+
+        valid [0, 1, 2, 3, 4]
+        answer [5]
+
+        test [0, 1, 2, 3, 4, 5]
+        answer [6]
+
+        Args:
+            index (int): _description_
+
+        Returns:
+            _type_: _description_
+        """
         user_id = index
         t_user_id = self.true_user_id[index]
         items = self.user_seq[index]
 
         assert self.data_type in {"train", "valid", "test"}
 
-        # [0, 1, 2, 3, 4, 5, 6]
-        # train [0, 1, 2, 3]
-        # target [1, 2, 3, 4]
         if self.data_type == "train":
-            input_ids = items[:-3]
+            # * Remember that Training data (items) is subsequence
+            # * training data format for Transformer
+            input_ids: list[int] = items[:-3]
             target_pos = items[1:-2]
-            temp = self.train_tag[items[-3]]
+            # * target_prefix: prefix subsequence of the target item
+            target_prefix_list: list[list[int]] = self.train_tag[items[-3]]
+
+            # * `item` and `target_prefix` are both subsequence.
+            # * But `items` not include User_ID while `target_prefix` include User_ID.
+            # * So the following code always use target_prefix[1:].
+
+            # ? 下面这个 target_pos_ 是什么意思?
             flag = False
-            for t_ in temp:
-                if t_[1:] == items[:-3]:
+            for target_prefix in target_prefix_list:
+                if target_prefix[1:] == items[:-3]:
                     continue
-                target_pos_ = t_[1:]
+                target_pos_ = target_prefix[1:]
                 flag = True
             if not flag:
-                target_pos_ = random.choice(temp)[1:]
-            seq_label_signal = items[-2]  # no use
-            answer = [0]  # no use
+                target_pos_ = random.choice(target_prefix_list)[1:]  #
+            answer = [0]  # no use, just for the same format
         elif self.data_type == "valid":
             input_ids = items[:-2]
             target_pos = items[1:-1]
@@ -179,13 +258,15 @@ class RecWithContrastiveLearningDataset(Dataset):
             input_ids = items_with_noise[:-1]
             target_pos = items_with_noise[1:]
             answer = [items_with_noise[-1]]
+        # ==============================================
+
+        # =============== Sample the data ==============
         if self.data_type == "train":
-            target_pos = (target_pos, target_pos_)
+            train_target_pos = (target_pos, target_pos_)
+            return self._data_sample_rec_task(user_id, items, input_ids, train_target_pos, answer)
+        if self.data_type == "valid":
             return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
-        elif self.data_type == "valid":
-            return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
-        else:
-            return self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
+        return self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
 
     def __len__(self):
         """
@@ -213,8 +294,8 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
         i_file (str): input file path
         o_file (str): output file path
         max_len (int): the max length of the sequence
-    """2.1 生成的子序列个数为 max_save_len - end, 比如 n=85, max_save_len=53, end=4, 生成的子序列个数为 53 - 4 = 49. 这 49 个子序列的开始都为 0, 结束为 3, 4, 5, ..., 51.
-    print(">>> Using DS to generate subsequence ...")
+    """
+    pprint_color(">>> Using DS to generate subsequence ...")
     # ========== read original sequence ==========
     with open(i_file, "r+", encoding="utf-8") as fr:
         seq_list = fr.readlines()
@@ -244,7 +325,6 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
                         subseq_dict[u_i].append(seq[start : start + max_save_len])
                         break
                 start += 1
-        #
         else:
             while end < len(seq):
                 subseq_dict[u_i].append(seq[start : end + 1])
@@ -254,109 +334,21 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
         for u_i, subseq_list in subseq_dict.items():
             for subseq in subseq_list:
                 fw.write(f"{u_i}{' '.join(subseq)}\n")
-    print(f">>> DS done, written to {o_file}")
-
-
-class SASRecDataset(Dataset):
-    def __init__(self, args, user_seq, test_neg_items=None, data_type="train"):
-        self.args = args
-        self.user_seq = user_seq
-        self.test_neg_items = test_neg_items
-        self.data_type = data_type
-        self.max_len = args.max_seq_length
-
-    def _data_sample_rec_task(self, user_id, items, input_ids, target_pos, answer):
-        # make a deep copy to avoid original sequence be modified
-        copied_input_ids = copy.deepcopy(input_ids)
-        target_neg = []
-        seq_set = set(items)
-        for _ in input_ids:
-            target_neg.append(neg_sample(seq_set, self.args.item_size))
-
-        pad_len = self.max_len - len(input_ids)
-        input_ids = [0] * pad_len + input_ids
-        target_pos = [0] * pad_len + target_pos
-        target_neg = [0] * pad_len + target_neg
-
-        input_ids = input_ids[-self.max_len :]
-        target_pos = target_pos[-self.max_len :]
-        target_neg = target_neg[-self.max_len :]
-
-        assert len(input_ids) == self.max_len
-        assert len(target_pos) == self.max_len
-        assert len(target_neg) == self.max_len
-
-        if self.test_neg_items is not None:
-            test_samples = self.test_neg_items[index]
-
-            cur_rec_tensors = (
-                torch.tensor(user_id, dtype=torch.long),  # user_id for testing
-                torch.tensor(input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(target_neg, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-                torch.tensor(test_samples, dtype=torch.long),
-            )
-        else:
-            cur_rec_tensors = (
-                torch.tensor(user_id, dtype=torch.long),  # user_id for testing
-                torch.tensor(input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(target_neg, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-            )
-
-        return cur_rec_tensors
-
-    def __getitem__(self, index):
-
-        user_id = index
-        items = self.user_seq[index]
-
-        assert self.data_type in {"train", "valid", "test"}
-
-        # [0, 1, 2, 3, 4, 5, 6]
-        # train [0, 1, 2, 3]
-        # target [1, 2, 3, 4]
-
-        # valid [0, 1, 2, 3, 4]
-        # answer [5]
-
-        # test [0, 1, 2, 3, 4, 5]
-        # answer [6]
-        if self.data_type == "train":
-            input_ids = items[:-3]
-            target_pos = items[1:-2]
-            answer = [0]  # no use
-
-        elif self.data_type == "valid":
-            input_ids = items[:-2]
-            target_pos = items[1:-1]
-            answer = [items[-2]]
-
-        else:
-            input_ids = items[:-1]
-            target_pos = items[1:]
-            answer = [items[-1]]
-
-        return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
-
-    def __len__(self):
-        return len(self.user_seq)
+    pprint_color(f">>> DS done, written to {o_file}")
 
 
 if __name__ == "__main__":
-    # dynamic segmentation
+    # * dynamic segmentation
     DS("../data/Beauty.txt", "../data/Beauty_1.txt", 10)
     # DS_default("../data/Beauty.txt", "../data/Beauty_1.txt")
-    # generate target item
+    # * generate target item
     g = Generate_tag("../data", "Beauty", "../data")
-    # generate the dictionary
+    # * generate the dictionary
     data = g.get_data("../data/Beauty_1_t.pkl", "train")
     i = 0
-    # Only one sequence in the data dictionary in the training phase has the target item ID
+    # * Only one sequence in the data dictionary in the training phase has the target item ID
     for d_ in data:
         if len(data[d_]) < 2:
             i += 1
-            print("less is : ", data[d_], d_)
-    print(i)
+            pprint_color(f"less is : {data[d_]} target_id : {d_}")
+    pprint_color(i)

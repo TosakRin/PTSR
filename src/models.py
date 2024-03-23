@@ -5,27 +5,30 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-import copy
-import math
-import os
-import pickle
-import random
-import time
+import argparse
+from typing import Union
 
 import faiss
-import gensim
+import numpy as np
 import torch
-import torch.nn as nn
-from tqdm import tqdm
+from torch import Tensor, nn
 
+from cprint import pprint_color
 from modules import Encoder, LayerNorm
 
 
-class KMeans(object):
-    def __init__(self, num_cluster, seed, hidden_size, gpu_id=0, device="cpu"):
-        """
+class KMeans:
+    centroids: Tensor
+
+    def __init__(
+        self, num_cluster: int, seed: int, hidden_size: int, gpu_id: int = 0, device: Union[torch.device, str] = "cpu"
+    ):
+        """KMeans clustering.
+
         Args:
-            k: number of clusters
+            num_cluster (int): number of clusters
+            seed (int): random seed
+            hidden_size (int): hidden size of embedding
         """
         self.seed = seed
         self.num_cluster = num_cluster
@@ -36,12 +39,33 @@ class KMeans(object):
         self.first_batch = True
         self.hidden_size = hidden_size
         self.clus, self.index = self.__init_cluster(self.hidden_size)
-        self.centroids = []
 
     def __init_cluster(
-        self, hidden_size, verbose=False, niter=20, nredo=5, max_points_per_centroid=4096, min_points_per_centroid=0
+        self,
+        hidden_size: int,
+        verbose: bool = False,
+        niter: int = 20,
+        nredo: int = 5,
+        max_points_per_centroid: int = 4096,
+        min_points_per_centroid: int = 0,
     ):
-        print(" cluster train iterations:", niter)
+        """Initialize the clustering.
+
+        Args:
+            hidden_size (int): hidden size of embedding
+            verbose (bool, optional): verbose during training?
+            niter (int, optional): clustering iterations. Defaults to 20.
+            nredo (int, optional): redo clustering this many times and keep best. Defaults to 5.
+            max_points_per_centroid (int, optional): to limit size of dataset. Defaults to 4096.
+            min_points_per_centroid (int, optional): otherwise you get a warning. Defaults to 0.
+
+        Returns:
+            tuple[Clustering, GpuIndexFlatL2]: clustering and index
+        """
+        pprint_color(
+            f">>> cluster train iterations: {niter}",
+        )
+        # ============== initiate faiss Clustering ==============
         clus = faiss.Clustering(hidden_size, self.num_cluster)
         clus.verbose = verbose
         clus.niter = niter
@@ -58,13 +82,17 @@ class KMeans(object):
         index = faiss.GpuIndexFlatL2(res, hidden_size, cfg)
         return clus, index
 
-    def train(self, x):
-        # train to get centroids
+    def train(self, x: np.ndarray):
+        """train to get centroids. Save to `self.centroids`.
+
+        Args:
+            x (np.ndarray): [131413, 64] -> [subseq_num, hidden_size]
+        """
         if x.shape[0] > self.num_cluster:
             self.clus.train(x, self.index)
-        # get cluster centroids
+        # * get cluster centroids. Shape: [num_cluster, hidden_size] -> [256, 64]
         centroids = faiss.vector_to_array(self.clus.centroids).reshape(self.num_cluster, self.hidden_size)
-        # convert to cuda Tensors for broadcast
+        # * convert to cuda Tensors for broadcast
         centroids = torch.Tensor(centroids).to(self.device)
         self.centroids = nn.functional.normalize(centroids, p=2, dim=1)
 
@@ -72,18 +100,18 @@ class KMeans(object):
         # self.index.add(x)
         D, I = self.index.search(x, 1)  # for each sample, find cluster distance and assignments
         seq2cluster = [int(n[0]) for n in I]
-        # print("cluster number:", self.num_cluster,"cluster in batch:", len(set(seq2cluster)))
+        # pprint_color("cluster number:", self.num_cluster,"cluster in batch:", len(set(seq2cluster)))
         seq2cluster = torch.LongTensor(seq2cluster).to(self.device)
         return seq2cluster, self.centroids[seq2cluster]
 
 
-
-
 class SASRecModel(nn.Module):
-    def __init__(self, args):
-        super(SASRecModel, self).__init__()
-        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
-        self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
+    def __init__(self, args: argparse.Namespace):
+        super().__init__()
+        self.item_embeddings = nn.Embedding(
+            num_embeddings=args.item_size, embedding_dim=args.hidden_size, padding_idx=0
+        )
+        self.position_embeddings = nn.Embedding(num_embeddings=args.max_seq_length, embedding_dim=args.hidden_size)
         self.item_encoder = Encoder(args)
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
@@ -93,9 +121,16 @@ class SASRecModel(nn.Module):
         self.apply(self.init_weights)
 
     # Positional Embedding
-    def add_position_embedding(self, sequence):
+    def add_position_embedding(self, sequence: Tensor):
+        """Add positional embeddings to item embeddings.
 
-        seq_length = sequence.size(1)
+        Args:
+            sequence (Tensor): [256, 50] -> [batch_size, seq_length]
+
+        Returns:
+            _type_: _description_
+        """
+        seq_length: int = sequence.size(1)
         position_ids = torch.arange(seq_length, dtype=torch.long, device=sequence.device)
         position_ids = position_ids.unsqueeze(0).expand_as(sequence)
 
@@ -108,33 +143,38 @@ class SASRecModel(nn.Module):
         return sequence_emb
 
     # model same as SASRec
-    def forward(self, input_ids):
+    def forward(self, input_ids: Tensor):
 
+        # * Shape: [batch_size, seq_length]
         attention_mask = (input_ids > 0).long()
-        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)  # torch.int64
-        max_len = attention_mask.size(-1)
+        # * Shape: [batch_size, 1, 1, seq_length]
+        extended_attention_mask: Tensor = attention_mask.unsqueeze(1).unsqueeze(2)  # torch.int64
+        max_len: int = attention_mask.size(-1)
         attn_shape = (1, max_len, max_len)
+
         subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1)  # torch.uint8
+        # * shape: [1, 1, seq_length, seq_length]
         subsequent_mask = (subsequent_mask == 0).unsqueeze(1)
         subsequent_mask = subsequent_mask.long()
 
         if self.args.cuda_condition:
             subsequent_mask = subsequent_mask.cuda()
 
+        # * Hadamand product and boardcast
+        # * shape: [batch_size, 1, seq_length, seq_length]
         extended_attention_mask = extended_attention_mask * subsequent_mask
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
-        sequence_emb = self.add_position_embedding(input_ids)
+        sequence_emb: Tensor = self.add_position_embedding(input_ids)
 
         item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
 
-        sequence_output = item_encoded_layers[-1]
-        return sequence_output
+        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
+        return item_encoded_layers[-1]
 
     def init_weights(self, module):
-        """ Initialize the weights.
-        """
+        """Initialize the weights."""
         if isinstance(module, (nn.Linear, nn.Embedding)):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
@@ -158,15 +198,15 @@ class GRUEncoder(nn.Module):
     """
 
     def __init__(self, args):
-        super(GRUEncoder, self).__init__()
+        super().__init__()
 
         # load parameters info
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
         self.args = args
-        self.embedding_size = args.hidden_size #64
-        self.hidden_size = args.hidden_size*2  #128
-        self.num_layers = args.num_hidden_layers-1 #1
-        self.dropout_prob =args.hidden_dropout_prob #0.3
+        self.embedding_size = args.hidden_size  # 64
+        self.hidden_size = args.hidden_size * 2  # 128
+        self.num_layers = args.num_hidden_layers - 1  # 1
+        self.dropout_prob = args.hidden_dropout_prob  # 0.3
 
         # define layers and loss
         self.emb_dropout = nn.Dropout(args.hidden_dropout_prob)
@@ -179,7 +219,6 @@ class GRUEncoder(nn.Module):
         )
         self.dense = nn.Linear(self.hidden_size, self.embedding_size)
 
-
     def forward(self, item_seq):
         item_seq_emb = self.item_embeddings(item_seq)
         item_seq_emb_dropout = self.emb_dropout(item_seq_emb)
@@ -187,9 +226,5 @@ class GRUEncoder(nn.Module):
         gru_output = self.dense(gru_output)
         # the embedding of the predicted item, shape of (batch_size, embedding_size)
         # seq_output = self.gather_indexes(gru_output, item_seq_len - 1)
-        seq_output=gru_output
+        seq_output = gru_output
         return seq_output
-
-
-
-
