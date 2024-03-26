@@ -5,23 +5,14 @@ from typing import Optional, Union
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 from cprint import pprint_color
-from datasets import DS, RecWithContrastiveLearningDataset
+from datasets import DS, build_dataloader
 from logger import set_logger
 from models import GRUEncoder, SASRecModel
 from param import parse_args, print_args_info
 from trainers import ICSRecTrainer
 from utils import EarlyStopping, check_path, get_user_seqs, set_seed
-
-
-def build_dataloader(args, user_seq, loader_type):
-    data_type = loader_type if loader_type != "cluster" else "train"
-    sampler = RandomSampler if loader_type == "train" else SequentialSampler
-    pprint_color(f">>> Building {loader_type} Dataloader")
-    dataset = RecWithContrastiveLearningDataset(args, user_seq, data_type=data_type)
-    return DataLoader(dataset, sampler=sampler(dataset), batch_size=args.batch_size)
 
 
 def main() -> None:

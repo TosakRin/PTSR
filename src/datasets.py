@@ -25,7 +25,7 @@ import random
 from ast import literal_eval
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 
 from cprint import pprint_color
 from utils import get_user_seqs
@@ -349,6 +349,14 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
             for subseq in subseq_list:
                 fw.write(f"{u_i}{' '.join(subseq)}\n")
     pprint_color(f">>> DS done, written to {o_file}")
+
+
+def build_dataloader(args, user_seq, loader_type):
+    data_type = loader_type if loader_type != "cluster" else "train"
+    sampler = RandomSampler if loader_type == "train" else SequentialSampler
+    pprint_color(f">>> Building {loader_type} Dataloader")
+    dataset = RecWithContrastiveLearningDataset(args, user_seq, data_type=data_type)
+    return DataLoader(dataset, sampler=sampler(dataset), batch_size=args.batch_size)
 
 
 if __name__ == "__main__":
