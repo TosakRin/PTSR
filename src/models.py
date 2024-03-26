@@ -8,7 +8,7 @@
 import argparse
 from typing import Union
 
-import faiss
+import faiss    # type: ignore
 import numpy as np
 import torch
 from torch import Tensor, nn
@@ -30,6 +30,7 @@ class KMeans:
             seed (int): random seed
             hidden_size (int): hidden size of embedding
         """
+        pprint_color(">>> Initialize KMeans Clustering")
         self.seed = seed
         self.num_cluster = num_cluster
         self.max_points_per_centroid = 4096
@@ -65,7 +66,6 @@ class KMeans:
         pprint_color(
             f">>> cluster train iterations: {niter}",
         )
-        # ============== initiate faiss Clustering ==============
         clus = faiss.Clustering(hidden_size, self.num_cluster)
         clus.verbose = verbose
         clus.niter = niter
@@ -80,6 +80,7 @@ class KMeans:
         cfg.useFloat16 = False
         cfg.device = self.gpu_id
         index = faiss.GpuIndexFlatL2(res, hidden_size, cfg)
+        pprint_color(f">>> FAISS Device: {faiss.get_num_gpus()}")
         return clus, index
 
     def train(self, x: np.ndarray):
@@ -120,7 +121,6 @@ class SASRecModel(nn.Module):
         self.criterion = nn.BCELoss(reduction="none")
         self.apply(self.init_weights)
 
-    # Positional Embedding
     def add_position_embedding(self, sequence: Tensor):
         """Add positional embeddings to item embeddings.
 

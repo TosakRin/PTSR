@@ -1,10 +1,22 @@
+"""
+/@
+ @Author       : TosakRin sick_person@outlook.com
+ @Date         : 2024-03-18 15:52:01
+ @LastEditors  : TosakRin sick_person@outlook.com
+ @LastEditTime : 2024-03-23 20:20:39
+ @FilePath     : /ICSRec/src/datasets.py
+ @Description  : Dataset: Including subsequence generation (DS), target-item | subsequence set generation (Generate_tag), and dataset class (RecWithContrastiveLearningDataset).
+ @/
+"""
+
 # -*- coding: utf-8 -*-
 #
 # Copyright (c) 2022 salesforce.com, inc.
 # All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
-#
+
+
 import argparse
 import copy
 import os
@@ -137,14 +149,13 @@ class RecWithContrastiveLearningDataset(Dataset):
         # make a deep copy to avoid original sequence be modified
         copied_input_ids = copy.deepcopy(input_ids)
 
-        # ============ input padding and truncating ============
+        # * input padding and truncating
         # ? max_len 一定大于等于 len(input_ids) 吗?
         pad_len = self.max_len - len(copied_input_ids)
         copied_input_ids = [0] * pad_len + copied_input_ids
         copied_input_ids = copied_input_ids[-self.max_len :]  #
         assert len(copied_input_ids) == self.max_len
 
-        # ============ target padding and truncating ============
         if isinstance(target_pos, tuple):  # * train
             pad_len_1 = self.max_len - len(target_pos[1])
             target_pos_1 = [0] * pad_len + target_pos[0]
@@ -158,7 +169,7 @@ class RecWithContrastiveLearningDataset(Dataset):
             target_pos = target_pos[-self.max_len :]
             assert len(target_pos) == self.max_len
 
-        # ============= assemble sequence to tensor =============
+        # * assemble sequence
         if self.test_neg_items is None:
             return (
                 (
@@ -202,18 +213,23 @@ class RecWithContrastiveLearningDataset(Dataset):
         return inserted_sequence
 
     def __getitem__(self, index: int):
-        """_summary_
+        """Get the data sample for the RecWithContrastiveLearningDataset.
 
+        Example:
+
+        ```
         [0, 1, 2, 3, 4, 5, 6]
 
         train [0, 1, 2, 3]
         target [1, 2, 3, 4]
+        answer [4]
 
         valid [0, 1, 2, 3, 4]
         answer [5]
 
         test [0, 1, 2, 3, 4, 5]
         answer [6]
+        ```
 
         Args:
             index (int): _description_
@@ -258,9 +274,8 @@ class RecWithContrastiveLearningDataset(Dataset):
             input_ids = items_with_noise[:-1]
             target_pos = items_with_noise[1:]
             answer = [items_with_noise[-1]]
-        # ==============================================
 
-        # =============== Sample the data ==============
+        # * Sample the data
         if self.data_type == "train":
             train_target_pos = (target_pos, target_pos_)
             return self._data_sample_rec_task(user_id, items, input_ids, train_target_pos, answer)
@@ -296,7 +311,6 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
         max_len (int): the max length of the sequence
     """
     pprint_color(">>> Using DS to generate subsequence ...")
-    # ========== read original sequence ==========
     with open(i_file, "r+", encoding="utf-8") as fr:
         seq_list = fr.readlines()
     subseq_dict: dict[str, list] = {}
@@ -329,7 +343,7 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
             while end < len(seq):
                 subseq_dict[u_i].append(seq[start : end + 1])
                 end += 1
-    # ========== write to file ==========
+
     with open(o_file, "w+", encoding="utf-8") as fw:
         for u_i, subseq_list in subseq_dict.items():
             for subseq in subseq_list:

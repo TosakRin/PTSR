@@ -1,6 +1,17 @@
+"""
+/@
+ @Author       : TosakRin sick_person@outlook.com
+ @Date         : 2024-03-21 18:16:35
+ @LastEditors  : TosakRin sick_person@outlook.com
+ @LastEditTime : 2024-03-23 20:23:49
+ @FilePath     : /ICSRec/src/param.py
+ @Description  : argument parser
+ @/
+"""
+
 import argparse
 
-from cprint import pprint_color
+from cprint import pprint_color, print_color
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     # * train args
     parser.add_argument("--lr", type=float, default=0.001, help="learning rate of adam")
     parser.add_argument("--batch_size", type=int, default=256, help="number of batch_size")
-    parser.add_argument("--epochs", type=int, default=5, help="number of epochs")
+    parser.add_argument("--epochs", type=int, default=300, help="number of epochs")
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--log_freq", type=int, default=1, help="per epoch print res")
     parser.add_argument("--seed", default=2022, type=int)
@@ -57,7 +68,9 @@ def parse_args() -> argparse.Namespace:
     # * ablation experiments
     parser.add_argument("--cl_mode", type=str, default="cf", help="contrastive mode")
     # * {'cf':coarse-grain+fine-grain,'c':only coarse-grain,'f':only fine-grain}
-    parser.add_argument("--f_neg", action="store_true", help="delete the FNM component (both in cicl and ficl)")
+    parser.add_argument(
+        "--f_neg", action="store_true", help="delete the FNM (False Negative Mining) component (both in cicl and ficl)"
+    )
 
     # * learning related
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight_decay of adam")
@@ -65,8 +78,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def show_args_info(args) -> None:
+def print_args_info(args) -> None:
     """print the args info"""
-    pprint_color("--------------------Configure Info:------------")
+    pprint_color("-------------------- Configure Info: -------------------- ")
     for arg in vars(args):
         pprint_color(f"{arg:<30} : {getattr(args, arg):>35}")
+    print_color("---------------------------------------------------------- ")

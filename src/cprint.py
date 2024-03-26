@@ -18,7 +18,7 @@ from pygments.lexers.python import PythonLexer
 from termcolor import colored
 from termcolor import cprint as termcolor_cprint
 
-COLOR_MAP  = {
+COLOR_MAP = {
     "black": "\033[1;30m",
     "red": "\033[1;31m",
     "green": "\033[1;32m",
@@ -137,7 +137,7 @@ def example() -> None:
 
     # === print with color highlighting and other attributes ===
     cprint(text="Hello, World!", color="red", on_color="on_black", attrs=["bold", "blink"])
-    
+
     # === print with pretty format ===
     pprint(object=data)
     pprint_color(text=data)
