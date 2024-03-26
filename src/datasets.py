@@ -28,7 +28,6 @@ import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 
 from cprint import pprint_color
-from utils import get_user_seqs
 
 
 class Generate_tag:
@@ -128,7 +127,6 @@ class RecWithContrastiveLearningDataset(Dataset):
         self.train_tag: dict[int, list[list[int]]] = self.sem_tag.get_data(
             f"{self.args.data_dir}/{self.args.data_name}_1_t.pkl", mode="train"
         )
-        self.true_user_id, _, _, _, _ = get_user_seqs(args.train_data_file)
 
     def _data_sample_rec_task(
         self, user_id: int, items: list[int], input_ids: list[int], target_pos, answer: list[int]
@@ -238,7 +236,6 @@ class RecWithContrastiveLearningDataset(Dataset):
             _type_: _description_
         """
         user_id = index
-        t_user_id = self.true_user_id[index]
         items = self.user_seq[index]
 
         assert self.data_type in {"train", "valid", "test"}
@@ -347,7 +344,7 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
     with open(o_file, "w+", encoding="utf-8") as fw:
         for u_i, subseq_list in subseq_dict.items():
             for subseq in subseq_list:
-                fw.write(f"{u_i}{' '.join(subseq)}\n")
+                fw.write(f"{u_i} {' '.join(subseq)}\n")
     pprint_color(f">>> DS done, written to {o_file}")
 
 
