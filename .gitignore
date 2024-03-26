@@ -172,7 +172,11 @@ cython_debug/
 # Built Visual Studio Code Extensions
 *.vsix
 
-
+src/__pycache__/*
 *.pyc
 *.pt
 .vscode
+tmp.py
+proxy.sh
+*.ipynb
+
