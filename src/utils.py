@@ -14,7 +14,6 @@ from typing import Literal
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from scipy.sparse import csr_matrix  # type: ignore
 
 from cprint import pprint_color
@@ -40,7 +39,7 @@ def check_path(path):
         pprint_color(f'>>> output path: "{os.path.abspath(path)}" exist')
 
 
-def generate_rating_matrix(
+def get_rating_matrix(
     user_seq: list[list[int]],
     num_users: int,
     num_items: int,
@@ -74,12 +73,12 @@ def generate_rating_matrix(
     return csr_matrix((data, (row, col)), shape=(num_users, num_items))
 
 
-def get_user_seqs(data_file: str) -> tuple[list[int], list[list[int]], int, csr_matrix, csr_matrix]:
+def get_user_seqs(data_file: str) -> list[list[int]]:
     """read data file, preprocess to 2 list (user_id, user_seq) and 2 matrix (valid_rating_matrix, test_rating_matrix)
 
     Args:
         data_file (str):
-        - train: data file path after subsequences split.
+        - train: data file path after subsequences split (aka after DS).
         - valid/test: original data file path.
 
     Returns:
@@ -88,26 +87,28 @@ def get_user_seqs(data_file: str) -> tuple[list[int], list[list[int]], int, csr_
     with open(data_file, encoding="utf-8") as f:
         subseq_list: list[str] = f.readlines()
         user_seq: list[list[int]] = []
-        user_id: list[int] = []
-        item_set: set[int] = set()
         for subseq in subseq_list:
-            user, items_str = subseq.strip().split(" ", 1)
-            items_list: list[str] = items_str.split(" ")
+            items_list: list[str] = subseq.strip().split()[1:]
             items: list[int] = [int(item) for item in items_list]
             user_seq.append(items)
-            user_id.append(int(user))
-            item_set = item_set | set(items)
-        max_item: int = max(item_set)
-        num_users: int = len(subseq_list)
-        num_items: int = max_item + 2
-        valid_rating_matrix: csr_matrix = generate_rating_matrix(
-            user_seq,
-            num_users,
-            num_items,
-            "valid",
-        )
-        test_rating_matrix: csr_matrix = generate_rating_matrix(user_seq, num_users, num_items, "test")
-        return user_id, user_seq, max_item, valid_rating_matrix, test_rating_matrix
+        return user_seq
+
+
+def get_num_users(data_file):
+    """get number of users in original data file"""
+    with open(data_file, encoding="utf-8") as f:
+        return len(f.readlines())
+
+
+def get_max_item(data_file):
+    """get max item id in original data file"""
+    max_item = 0
+    with open(data_file, encoding="utf-8") as f:
+        for line in f:
+            numbers = [int(item) for item in line.split()[1:]]
+            if numbers:
+                max_item = max(max_item, max(numbers))
+    return max_item
 
 
 class EarlyStopping:
@@ -176,7 +177,7 @@ class EarlyStopping:
         self.score_min = score
 
 
-# fixme: No Use in this project
+# No Use in this project
 def nCr(n, r):
     """
     Calculates the number of combinations (n choose r).
@@ -193,7 +194,7 @@ def nCr(n, r):
     return f(n) // f(r) // f(n - r)
 
 
-# fixme: No Use in this project
+# No Use in this project
 def neg_sample(item_set, item_size):  # []
     item = random.randint(1, item_size - 1)
     while item in item_set:
@@ -201,18 +202,18 @@ def neg_sample(item_set, item_size):  # []
     return item
 
 
-# fixme: No Use in this project
+# No Use in this project
 def kmax_pooling(x, dim, k):
     index = x.topk(k, dim=dim)[1].sort(dim=dim)[0]
     return x.gather(dim, index).squeeze(dim)
 
 
-# fixme: No Use in this project
+# No Use in this project
 def avg_pooling(x, dim):
     return x.sum(dim=dim) / x.size(dim)
 
 
-# fixme: No Use in this project
+# No Use in this project
 def get_user_seqs_long(data_file):
     lines = open(data_file, encoding="utf-8").readlines()
     user_seq = []
@@ -230,7 +231,7 @@ def get_user_seqs_long(data_file):
     return user_seq, max_item, long_sequence
 
 
-# fixme: No Use in this project
+# No Use in this project
 def get_user_seqs_and_sample(data_file, sample_file):
     lines = open(data_file, encoding="utf-8").readlines()
     user_seq = []
@@ -256,7 +257,7 @@ def get_user_seqs_and_sample(data_file, sample_file):
     return user_seq, max_item, sample_seq
 
 
-# fixme: No Use in this project
+# No Use in this project
 def get_item2attribute_json(data_file):
     item2attribute = json.loads(open(data_file, encoding="utf-8").readline())
     attribute_set = set()
