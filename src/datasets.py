@@ -85,7 +85,7 @@ class Generate_tag:
         """get the prefix subsequence set (dict).
 
         Args:
-            data_path (str): pkl file path
+            data_path (str): pkl file path. Subseq in pkl file contains User_ID (subseq[0]) and the real subsequence (subseq[1:].
             mode (str, optional): _description_. Defaults to "train".
 
         Returns:
@@ -113,7 +113,7 @@ class RecWithContrastiveLearningDataset(Dataset):
 
         Args:
             user_seq (list[list[int]]): subseq list in the training phase and original sequence in the validation and testing phase. *Not including User_ID*.
-            test_neg_items (_type_, optional): _description_. Defaults to None.
+            test_neg_items (_type_, optional): negative sample in test for sample based ranking. This paper use other sample in the the same batch as negative sample. So always be None.
             data_type (str, optional): _description_. Defaults to "train".
         """
         self.args = args
@@ -131,7 +131,11 @@ class RecWithContrastiveLearningDataset(Dataset):
     def _data_sample_rec_task(
         self, user_id: int, items: list[int], input_ids: list[int], target_pos, answer: list[int]
     ):
-        """Sample from dataset for SASRec.
+        """post-processing the data sample to Tensor for the RecWithContrastiveLearningDataset from __getitem__:
+
+        1. padding
+        2. truncating
+        3. assembling
 
         Args:
             user_id (int):
@@ -143,17 +147,13 @@ class RecWithContrastiveLearningDataset(Dataset):
         Returns:
             tuple:
         """
-
-        # make a deep copy to avoid original sequence be modified
         copied_input_ids = copy.deepcopy(input_ids)
 
         # * input padding and truncating
-        # ? max_len 一定大于等于 len(input_ids) 吗?
         pad_len = self.max_len - len(copied_input_ids)
         copied_input_ids = [0] * pad_len + copied_input_ids
         copied_input_ids = copied_input_ids[-self.max_len :]  #
         assert len(copied_input_ids) == self.max_len
-
         if isinstance(target_pos, tuple):  # * train
             pad_len_1 = self.max_len - len(target_pos[1])
             target_pos_1 = [0] * pad_len + target_pos[0]
@@ -218,14 +218,20 @@ class RecWithContrastiveLearningDataset(Dataset):
         ```
         [0, 1, 2, 3, 4, 5, 6]
 
-        train [0, 1, 2, 3]
-        target [1, 2, 3, 4]
+        train:
+        input_id [0, 1, 2, 3]
+        target_pos [1, 2, 3, 4]
+        target_pos_ sampled from the target item set
         answer [4]
 
-        valid [0, 1, 2, 3, 4]
+        valid:
+        input_id [0, 1, 2, 3, 4]
+        target_pos [1, 2, 3, 4, 5]
         answer [5]
 
-        test [0, 1, 2, 3, 4, 5]
+        test:
+        input_id [0, 1, 2, 3, 4, 5]
+        target_pos [1, 2, 3, 4, 5, 6]
         answer [6]
         ```
 
@@ -236,26 +242,27 @@ class RecWithContrastiveLearningDataset(Dataset):
             _type_: _description_
         """
         user_id = index
-        items = self.user_seq[index]
-
+        user_seq = self.user_seq[index]
         assert self.data_type in {"train", "valid", "test"}
 
         if self.data_type == "train":
             # * Remember that Training data (items) is subsequence
-            # * training data format for Transformer
-            input_ids: list[int] = items[:-3]
-            target_pos = items[1:-2]
-            # * target_prefix: prefix subsequence of the target item
-            target_prefix_list: list[list[int]] = self.train_tag[items[-3]]
+            input_ids: list[int] = user_seq[:-3]
+            target_pos = user_seq[1:-2]
+            # * target_prefix: prefix subsequence of the target item in training stage.
+            target_prefix_list: list[list[int]] = self.train_tag[user_seq[-3]]
 
             # * `item` and `target_prefix` are both subsequence.
             # * But `items` not include User_ID while `target_prefix` include User_ID.
+            # * Because `items` comes from `train_user_seq` while `target_prefix` comes from `train_tag` (aka )
             # * So the following code always use target_prefix[1:].
 
             # ? 下面这个 target_pos_ 是什么意思?
             flag = False
+            # * sample another subseq from the target item set
             for target_prefix in target_prefix_list:
-                if target_prefix[1:] == items[:-3]:
+                # * skip the subseq same with the input subseq
+                if target_prefix[1:] == user_seq[:-3]:
                     continue
                 target_pos_ = target_prefix[1:]
                 flag = True
@@ -263,11 +270,11 @@ class RecWithContrastiveLearningDataset(Dataset):
                 target_pos_ = random.choice(target_prefix_list)[1:]  #
             answer = [0]  # no use, just for the same format
         elif self.data_type == "valid":
-            input_ids = items[:-2]
-            target_pos = items[1:-1]
-            answer = [items[-2]]
+            input_ids = user_seq[:-2]
+            target_pos = user_seq[1:-1]
+            answer = [user_seq[-2]]
         else:
-            items_with_noise = self._add_noise_interactions(items)
+            items_with_noise = self._add_noise_interactions(user_seq)
             input_ids = items_with_noise[:-1]
             target_pos = items_with_noise[1:]
             answer = [items_with_noise[-1]]
@@ -275,9 +282,9 @@ class RecWithContrastiveLearningDataset(Dataset):
         # * Sample the data
         if self.data_type == "train":
             train_target_pos = (target_pos, target_pos_)
-            return self._data_sample_rec_task(user_id, items, input_ids, train_target_pos, answer)
+            return self._data_sample_rec_task(user_id, user_seq, input_ids, train_target_pos, answer)
         if self.data_type == "valid":
-            return self._data_sample_rec_task(user_id, items, input_ids, target_pos, answer)
+            return self._data_sample_rec_task(user_id, user_seq, input_ids, target_pos, answer)
         return self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
 
     def __len__(self):
