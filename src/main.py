@@ -11,7 +11,7 @@ from cprint import pprint_color
 from datasets import DS, build_dataloader
 from logger import set_logger
 from models import GRUEncoder, SASRecModel
-from param import parse_args, print_args_info
+from param import args, print_args_info
 from trainers import ICSRecTrainer
 from utils import (
     EarlyStopping,
@@ -25,7 +25,6 @@ from utils import (
 
 
 def main() -> None:
-    args: argparse.Namespace = parse_args()
     set_seed(args.seed)
     check_path(args.output_dir)
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
@@ -49,7 +48,6 @@ def main() -> None:
     max_item = get_max_item(args.data_file)
     num_users = get_num_users(args.data_file)
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
-
     # ? 为什么要加 2
     args.item_size = max_item + 2
     args.mask_id = max_item + 1
@@ -77,20 +75,20 @@ def main() -> None:
     args.rating_matrix = valid_rating_matrix
 
     if not args.do_eval:
-        train_dataloader = build_dataloader(args, train_user_seq, "train")
-        cluster_dataloader = build_dataloader(args, train_user_seq, "cluster")
-        eval_dataloader = build_dataloader(args, test_user_seq, "valid")
+        train_dataloader = build_dataloader(train_user_seq, "train")
+        cluster_dataloader = build_dataloader(train_user_seq, "cluster")
+        eval_dataloader = build_dataloader(test_user_seq, "valid")
     else:
         train_dataloader = None
         cluster_dataloader = None
         eval_dataloader = None
-    test_dataloader = build_dataloader(args, test_user_seq, "test")
+    test_dataloader = build_dataloader(test_user_seq, "test")
 
     if args.encoder == "SAS":
-        model: Union[SASRecModel, GRUEncoder] = SASRecModel(args=args)
+        model: Union[SASRecModel, GRUEncoder] = SASRecModel()
     elif args.encoder == "GRU":
-        model = GRUEncoder(args=args)
-    trainer = ICSRecTrainer(model, train_dataloader, cluster_dataloader, eval_dataloader, test_dataloader, args)
+        model = GRUEncoder()
+    trainer = ICSRecTrainer(model, train_dataloader, cluster_dataloader, eval_dataloader, test_dataloader)
 
     if args.do_eval:
         args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-0.pt")

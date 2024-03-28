@@ -7,7 +7,6 @@
 #
 
 
-import argparse
 import gc
 from typing import Optional, Union
 
@@ -22,6 +21,7 @@ from tqdm import tqdm
 from cprint import pprint_color
 from metric import get_metric, ndcg_k, recall_at_k
 from models import GRUEncoder, KMeans, SASRecModel
+from param import args
 
 
 class Trainer:
@@ -33,18 +33,17 @@ class Trainer:
         cluster_dataloader: Optional[DataLoader],
         eval_dataloader: Optional[DataLoader],
         test_dataloader: DataLoader,
-        args: argparse.Namespace,
     ) -> None:
         pprint_color(">>> Initialize Trainer")
-        self.args = args
-        cuda_condition = torch.cuda.is_available() and not self.args.no_cuda
+
+        cuda_condition = torch.cuda.is_available() and not args.no_cuda
         self.device: torch.device = torch.device("cuda" if cuda_condition else "cpu")
         self.model = model
         if cuda_condition:
             self.model.cuda()
 
-        self.batch_size: int = self.args.batch_size
-        self.sim: str = self.args.sim  # * the calculate ways of the similarity.
+        self.batch_size: int = args.batch_size
+        self.sim: str = args.sim  # * the calculate ways of the similarity.
 
         cluster = KMeans(
             num_cluster=args.intent_num,
@@ -61,7 +60,10 @@ class Trainer:
         self.eval_dataloader = eval_dataloader
         self.test_dataloader = test_dataloader
 
-        self.optim = Adam(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        # todo: get_graph
+        # self.graph = get_graph(subseq_target_set, num_items, num_subseqs)
+
+        self.optim = Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
         pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
@@ -83,7 +85,7 @@ class Trainer:
             "MRR": round(MRR, 4),
         }
         pprint_color(post_fix)
-        self.args.logger.info(str(post_fix))
+        args.logger.info(str(post_fix))
         return [HIT_1, NDCG_1, HIT_5, NDCG_5, HIT_10, NDCG_10, MRR], str(post_fix)
 
     def get_full_sort_score(self, epoch: int, answers: np.ndarray, pred_list: np.ndarray) -> tuple[list[float], str]:
@@ -114,7 +116,7 @@ class Trainer:
             "NDCG@20": round(ndcg[3], 4),
         }
         pprint_color(post_fix)
-        self.args.logger.info(str(post_fix))
+        args.logger.info(str(post_fix))
         return [recall[0], ndcg[0], recall[1], ndcg[1], recall[3], ndcg[3]], str(post_fix)
 
     def save(self, file_name: str):
@@ -202,7 +204,7 @@ class Trainer:
         # * SHAPE: [batch_size*2, 1]
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
 
-        if self.args.f_neg:
+        if args.f_neg:
             mask = self.mask_correlated_samples_(intent_id)
             # * SHAPE: [batch_size*2, batch_size*2]
             negative_samples = sim
@@ -247,7 +249,7 @@ class Trainer:
         sem_nce_logits, sem_nce_labels = self.info_nce(
             coarse_intent_1[:, -1, :],
             coarse_intent_2[:, -1, :],
-            self.args.temperature,
+            args.temperature,
             coarse_intent_1.shape[0],
             self.sim,
             target_item[:, -1],
@@ -277,7 +279,7 @@ class Trainer:
             a, b = self.info_nce(
                 output.view(output.shape[0], -1),
                 seq_to_v,
-                self.args.temperature,
+                args.temperature,
                 output.shape[0],
                 sim_way=self.sim,
                 intent_id=intent_id,
@@ -312,7 +314,7 @@ class ICSRecTrainer(Trainer):
     def train_epoch(self, epoch, cluster_dataloader, train_dataloader):
         pprint_color(f">>> Train Epoch: {epoch}")
         # * contrastive mode: {'cf':coarse-grain+fine-grain,'c':only coarse-grain,'f':only fine-grain}
-        if self.args.cl_mode in ["cf", "f"]:
+        if args.cl_mode in ["cf", "f"]:
             self.cluster_epoch(cluster_dataloader)
 
         pprint_color(">>> Performing Rec model Training:")
@@ -338,16 +340,16 @@ class ICSRecTrainer(Trainer):
             coarse_intent_2 = self.model(subsequence_2)
             subseq_pair = [coarse_intent_1, coarse_intent_2]
 
-            if self.args.cl_mode in ["c", "cf"]:
+            if args.cl_mode in ["c", "cf"]:
                 cicl_loss = self.cicl_loss(subseq_pair, target_pos_1)
             else:
                 cicl_loss = 0.0
-            if self.args.cl_mode in ["f", "cf"]:
+            if args.cl_mode in ["f", "cf"]:
                 ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
             else:
                 ficl_loss = 0.0
-            icl_loss = self.args.lambda_0 * cicl_loss + self.args.beta_0 * ficl_loss
-            joint_loss = self.args.rec_weight * rec_loss + icl_loss
+            icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
+            joint_loss = args.rec_weight * rec_loss + icl_loss
 
             self.optim.zero_grad()
             joint_loss.backward()
@@ -369,10 +371,10 @@ class ICSRecTrainer(Trainer):
             "joint_avg_loss": round(joint_avg_loss / batch_num, 4),
         }
 
-        if (epoch + 1) % self.args.log_freq == 0:
+        if (epoch + 1) % args.log_freq == 0:
             pprint_color(str(post_fix))
 
-        self.args.logger.info(str(post_fix))
+        args.logger.info(str(post_fix))
 
     def cluster_epoch(self, cluster_dataloader):
         assert cluster_dataloader is not None
@@ -409,6 +411,11 @@ class ICSRecTrainer(Trainer):
         del kmeans_training_data_t
         gc.collect()
 
+    def gnn_epoch(
+        self,
+    ):
+        pass
+
     def full_test_epoch(self, epoch: int, dataloader: DataLoader):
         pprint_color(f">>> full sort Test Epoch: {epoch}")
         self.model.eval()
@@ -426,7 +433,7 @@ class ICSRecTrainer(Trainer):
             batch_user_index = user_ids.cpu().numpy()
 
             # * 将已经有评分的 item 的预测评分设置为 0, 防止推荐已经评分过的 item
-            rating_pred[self.args.train_matrix[batch_user_index].toarray() > 0] = 0
+            rating_pred[args.rating_matrix[batch_user_index].toarray() > 0] = 0
             # * argpartition T: O(n)  argsort O(nlogn) | reference: https://stackoverflow.com/a/23734295, https://stackoverflow.com/a/20104162
             # * Get the *index* of the largest 20 items, but its order is not sorted. SHAPE: [Batch_size, 20]
             ind: np.ndarray = np.argpartition(rating_pred, -20)[:, -20:]

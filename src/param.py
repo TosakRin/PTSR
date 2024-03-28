@@ -84,3 +84,6 @@ def print_args_info(args) -> None:
     for arg in vars(args):
         pprint_color(f"{arg:<30} : {getattr(args, arg):>35}")
     print_color("---------------------------------------------------------- ")
+
+
+args: argparse.Namespace = parse_args()

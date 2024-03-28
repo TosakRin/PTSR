@@ -28,6 +28,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 
 from cprint import pprint_color
+from param import args
 
 
 class Generate_tag:
@@ -35,6 +36,8 @@ class Generate_tag:
 
     # * ATTENTION: the subseq[0] is User_ID, and the subseq[1:] is the real subsequence.
     """
+
+    target_subseqs_dict: dict[int, list[list[int]]]
 
     def __init__(self, data_dir: str, data_name: str, save_path: str) -> None:
         """
@@ -48,7 +51,7 @@ class Generate_tag:
         self.data_name = f"{data_name}_1"
         self.save_path = save_path
 
-    def generate(self) -> None:
+    def generate_subseq_target_dict(self) -> None:
         """Generate the target item for each subsequence, and save to pkl file."""
         # * data_f is the subsequences file
         data_f = f"{self.data_dir}/{self.data_name}.txt"
@@ -81,12 +84,12 @@ class Generate_tag:
         with open(f"{self.save_path}/{self.data_name}_t.pkl", "wb") as fw:
             pickle.dump(total_dic, fw)
 
-    def get_data(self, data_path: str, mode="train"):
+    def load_subseq_target_dict(self, data_path: str, mode="train"):
         """get the prefix subsequence set (dict).
 
         Args:
             data_path (str): pkl file path. Subseq in pkl file contains User_ID (subseq[0]) and the real subsequence (subseq[1:].
-            mode (str, optional): _description_. Defaults to "train".
+            mode (str, optional): target item set type. Only use "train" in this paper. Defaults to "train".
 
         Returns:
             _type_: _description_
@@ -95,16 +98,16 @@ class Generate_tag:
             raise ValueError("invalid data path")
         if not os.path.exists(data_path):
             pprint_color("The dict not exist, generating...")
-            self.generate()
+            self.generate_subseq_target_dict()
         with open(data_path, "rb") as read_file:
             data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
+        self.target_subseqs_dict = data_dict[mode]
         return data_dict[mode]
 
 
 class RecWithContrastiveLearningDataset(Dataset):
     def __init__(
         self,
-        args: argparse.Namespace,
         user_seq: list[list[int]],
         test_neg_items=None,
         data_type: str = "train",
@@ -116,16 +119,16 @@ class RecWithContrastiveLearningDataset(Dataset):
             test_neg_items (_type_, optional): negative sample in test for sample based ranking. This paper use other sample in the the same batch as negative sample. So always be None.
             data_type (str, optional): _description_. Defaults to "train".
         """
-        self.args = args
+
         self.user_seq = user_seq
         self.test_neg_items = test_neg_items
         self.data_type = data_type
         self.max_len: int = args.max_seq_length
 
         # create target item sets
-        self.sem_tag = Generate_tag(self.args.data_dir, self.args.data_name, self.args.data_dir)
-        self.train_tag: dict[int, list[list[int]]] = self.sem_tag.get_data(
-            f"{self.args.data_dir}/{self.args.data_name}_1_t.pkl", mode="train"
+        self.sem_tag = Generate_tag(args.data_dir, args.data_name, args.data_dir)
+        self.train_tag: dict[int, list[list[int]]] = self.sem_tag.load_subseq_target_dict(
+            f"{args.data_dir}/{args.data_name}_1_t.pkl", mode="train"
         )
 
     def _data_sample_rec_task(
@@ -196,16 +199,16 @@ class RecWithContrastiveLearningDataset(Dataset):
             _type_: _description_
         """
         copied_sequence = copy.deepcopy(items)
-        insert_nums = max(int(self.args.noise_ratio * len(copied_sequence)), 0)
+        insert_nums = max(int(args.noise_ratio * len(copied_sequence)), 0)
         if insert_nums == 0:
             return copied_sequence
         insert_idx = random.choices(list(range(len(copied_sequence))), k=insert_nums)
         inserted_sequence = []
         for index, item in enumerate(copied_sequence):
             if index in insert_idx:
-                item_id = random.randint(1, self.args.item_size - 2)
+                item_id = random.randint(1, args.item_size - 2)
                 while item_id in copied_sequence:
-                    item_id = random.randint(1, self.args.item_size - 2)
+                    item_id = random.randint(1, args.item_size - 2)
                 inserted_sequence += [item_id]
             inserted_sequence += [item]
         return inserted_sequence
@@ -355,11 +358,11 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
     pprint_color(f">>> DS done, written to {o_file}")
 
 
-def build_dataloader(args, user_seq, loader_type):
+def build_dataloader(user_seq, loader_type):
     data_type = loader_type if loader_type != "cluster" else "train"
     sampler = RandomSampler if loader_type == "train" else SequentialSampler
     pprint_color(f">>> Building {loader_type} Dataloader")
-    dataset = RecWithContrastiveLearningDataset(args, user_seq, data_type=data_type)
+    dataset = RecWithContrastiveLearningDataset(user_seq, data_type=data_type)
     return DataLoader(dataset, sampler=sampler(dataset), batch_size=args.batch_size)
 
 
@@ -370,7 +373,7 @@ if __name__ == "__main__":
     # * generate target item
     g = Generate_tag("../data", "Beauty", "../data")
     # * generate the dictionary
-    data = g.get_data("../data/Beauty_1_t.pkl", "train")
+    data = g.load_subseq_target_dict("../data/Beauty_1_t.pkl", "train")
     i = 0
     # * Only one sequence in the data dictionary in the training phase has the target item ID
     for d_ in data:

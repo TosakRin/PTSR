@@ -5,16 +5,16 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-import argparse
 from typing import Union
 
-import faiss    # type: ignore
+import faiss  # type: ignore
 import numpy as np
 import torch
 from torch import Tensor, nn
 
 from cprint import pprint_color
 from modules import Encoder, LayerNorm
+from param import args
 
 
 class KMeans:
@@ -107,16 +107,15 @@ class KMeans:
 
 
 class SASRecModel(nn.Module):
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self):
         super().__init__()
         self.item_embeddings = nn.Embedding(
             num_embeddings=args.item_size, embedding_dim=args.hidden_size, padding_idx=0
         )
         self.position_embeddings = nn.Embedding(num_embeddings=args.max_seq_length, embedding_dim=args.hidden_size)
-        self.item_encoder = Encoder(args)
+        self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
-        self.args = args
 
         self.criterion = nn.BCELoss(reduction="none")
         self.apply(self.init_weights)
@@ -157,7 +156,7 @@ class SASRecModel(nn.Module):
         subsequent_mask = (subsequent_mask == 0).unsqueeze(1)
         subsequent_mask = subsequent_mask.long()
 
-        if self.args.cuda_condition:
+        if args.cuda_condition:
             subsequent_mask = subsequent_mask.cuda()
 
         # * Hadamand product and boardcast
@@ -178,7 +177,7 @@ class SASRecModel(nn.Module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.args.initializer_range)
+            module.weight.data.normal_(mean=0.0, std=args.initializer_range)
         elif isinstance(module, LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
@@ -197,12 +196,12 @@ class GRUEncoder(nn.Module):
         in order that the generation method we used is common to other sequential models.
     """
 
-    def __init__(self, args):
+    def __init__(self):
         super().__init__()
 
         # load parameters info
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
-        self.args = args
+
         self.embedding_size = args.hidden_size  # 64
         self.hidden_size = args.hidden_size * 2  # 128
         self.num_layers = args.num_hidden_layers - 1  # 1
@@ -228,3 +227,4 @@ class GRUEncoder(nn.Module):
         # seq_output = self.gather_indexes(gru_output, item_seq_len - 1)
         seq_output = gru_output
         return seq_output
+

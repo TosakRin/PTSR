@@ -5,14 +5,16 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-import argparse
 import copy
 import math
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch_sparse
 from torch import Tensor, nn
+
+from param import args
 
 
 def gelu(x):
@@ -51,7 +53,7 @@ class LayerNorm(nn.Module):
 class Embeddings(nn.Module):
     """No use. Construct the embeddings from item, position."""
 
-    def __init__(self, args):
+    def __init__(self):
         super().__init__()
 
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)  # 不要乱用padding_idx
@@ -59,8 +61,6 @@ class Embeddings(nn.Module):
 
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
-
-        self.args = args
 
     def forward(self, input_ids):
         seq_length = input_ids.size(1)
@@ -78,7 +78,7 @@ class Embeddings(nn.Module):
 class SelfAttention(nn.Module):
     """Self-attention module."""
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self):
         super().__init__()
         if args.hidden_size % args.num_attention_heads != 0:
             raise ValueError(
@@ -172,7 +172,7 @@ class SelfAttention(nn.Module):
 
 
 class Intermediate(nn.Module):
-    def __init__(self, args):
+    def __init__(self):
         super().__init__()
         self.dense_1 = nn.Linear(args.hidden_size, args.hidden_size * 4)
         if isinstance(args.hidden_act, str):
@@ -214,10 +214,10 @@ class Intermediate(nn.Module):
 class Layer(nn.Module):
     """Layer block in the transformer model."""
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self):
         super().__init__()
-        self.attention = SelfAttention(args)
-        self.intermediate = Intermediate(args)
+        self.attention = SelfAttention()
+        self.intermediate = Intermediate()
 
     def forward(self, hidden_states, attention_mask):
         attention_output = self.attention(hidden_states, attention_mask)
@@ -227,9 +227,9 @@ class Layer(nn.Module):
 class Encoder(nn.Module):
     """Encoder: a stack of N layers."""
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self):
         super().__init__()
-        layer = Layer(args)
+        layer = Layer()
         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(args.num_hidden_layers)])
 
     def forward(self, hidden_states: Tensor, attention_mask: Tensor, output_all_encoded_layers=True) -> list[Tensor]:
