@@ -16,13 +16,13 @@ def get_metric(pred_list, topk=10):
     return HIT / len(pred_list), NDCG / len(pred_list), MRR / len(pred_list)
 
 
-# fixme: No Use in this project
+# No Use in this project
 def precision_at_k_per_sample(actual, predicted, topk):
     num_hits = sum(place in actual for place in predicted)
     return num_hits / (topk + 0.0)
 
 
-# fixme: No Use in this project
+# No Use in this project
 def precision_at_k(actual, predicted, topk):
     sum_precision = 0.0
     num_users = len(predicted)
@@ -46,7 +46,7 @@ def recall_at_k(actual, predicted, topk):
     return sum_recall / true_users
 
 
-# fixme: No Use in this project
+# No Use in this project
 def apk(actual, predicted, k=10):
     """
     Computes the average precision at k.
@@ -79,7 +79,7 @@ def apk(actual, predicted, k=10):
     return score / min(len(actual), k) if actual else 0.0
 
 
-# fixme: No Use in this project
+# No Use in this project
 def mapk(actual, predicted, k=10):
     """
     Computes the mean average precision at k.
