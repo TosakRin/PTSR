@@ -252,3 +252,83 @@ class Encoder(nn.Module):
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
+
+
+class GCNLayer(nn.Module):
+    def __init__(self):
+        super(GCNLayer, self).__init__()
+
+    def forward(self, adj, embeds, flag=True):
+        if flag:
+            return torch.spmm(adj, embeds)
+        else:
+            return torch_sparse.spmm(adj.indices(), adj.values(), adj.shape[0], adj.shape[1], embeds)
+
+
+class GCN(nn.Module):
+    def __init__(self):
+        super(GCN, self).__init__()
+        self.gcnLayers = nn.Sequential(*[GCNLayer() for _ in range(args.gnn_layer)])
+
+    def forward_gcn(self, adj, subseq, target):
+        iniEmbeds = torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
+
+        embedsLst = [iniEmbeds]
+        for gcn in self.gcnLayers:
+            embeds = gcn(adj, embedsLst[-1])
+            embedsLst.append(embeds)
+        mainEmbeds = sum(embedsLst)
+
+        return mainEmbeds[: args.user], mainEmbeds[args.user :]
+
+    def forward_graphcl(self, adj):
+        iniEmbeds = torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
+
+        embedsLst = [iniEmbeds]
+        for gcn in self.gcnLayers:
+            embeds = gcn(adj, embedsLst[-1])
+            embedsLst.append(embeds)
+        return sum(embedsLst)
+
+    def loss_graphcl(self, x1, x2, users, items):
+        T = args.temp
+        user_embeddings1, item_embeddings1 = torch.split(x1, [args.user, args.item], dim=0)
+        user_embeddings2, item_embeddings2 = torch.split(x2, [args.user, args.item], dim=0)
+
+        user_embeddings1 = F.normalize(user_embeddings1, dim=1)
+        item_embeddings1 = F.normalize(item_embeddings1, dim=1)
+        user_embeddings2 = F.normalize(user_embeddings2, dim=1)
+        item_embeddings2 = F.normalize(item_embeddings2, dim=1)
+
+        user_embs1 = F.embedding(users, user_embeddings1)
+        item_embs1 = F.embedding(items, item_embeddings1)
+        user_embs2 = F.embedding(users, user_embeddings2)
+        item_embs2 = F.embedding(items, item_embeddings2)
+
+        all_embs1 = torch.cat([user_embs1, item_embs1], dim=0)
+        all_embs2 = torch.cat([user_embs2, item_embs2], dim=0)
+
+        all_embs1_abs = all_embs1.norm(dim=1)
+        all_embs2_abs = all_embs2.norm(dim=1)
+
+        sim_matrix = torch.einsum("ik,jk->ij", all_embs1, all_embs2) / torch.einsum(
+            "i,j->ij", all_embs1_abs, all_embs2_abs
+        )
+        sim_matrix = torch.exp(sim_matrix / T)
+        pos_sim = sim_matrix[np.arange(all_embs1.shape[0]), np.arange(all_embs1.shape[0])]
+        loss = pos_sim / (sim_matrix.sum(dim=1) - pos_sim)
+        loss = -torch.log(loss)
+
+        return loss
+
+    def getEmbeds(self):
+        self.unfreeze(self.gcnLayers)
+        return torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
+
+    def unfreeze(self, layer):
+        for child in layer.children():
+            for param in child.parameters():
+                param.requires_grad = True
+
+    def getGCN(self):
+        return self.gcnLayers
