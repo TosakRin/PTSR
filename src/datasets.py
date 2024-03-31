@@ -17,7 +17,6 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 
-import argparse
 import copy
 import os
 import pickle
@@ -82,7 +81,7 @@ class TargetSubseqs:
         with open(self.target_subseqs_path, "wb") as fw:
             pickle.dump(total_dic, fw)
 
-    def load_target_subseqs_dict(self, target_subseqs_path: str, mode="train"):
+    def _load_target_subseqs_dict(self, target_subseqs_path: str, mode="train"):
         """get the prefix subsequence set (dict).
 
         Args:
@@ -100,6 +99,26 @@ class TargetSubseqs:
         with open(target_subseqs_path, "rb") as read_file:
             data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
         self.target_subseqs_dict = data_dict[mode]
+        return data_dict[mode]
+
+    @staticmethod
+    def load_target_subseqs_dict(target_subseqs_path: str, mode="train"):
+        """get the prefix subsequence set (dict).
+
+        Args:
+            data_path (str): pkl file path. Subseq in pkl file contains User_ID (subseq[0]) and the real subsequence (subseq[1:].
+            mode (str, optional): target item set type. Only use "train" in this paper. Defaults to "train".
+
+        Returns:
+            _type_: _description_
+        """
+        if not target_subseqs_path:
+            raise ValueError("invalid data path")
+        if not os.path.exists(target_subseqs_path):
+            pprint_color("The dict not exist, generating...")
+            self.generate_target_subseqs_dict()
+        with open(target_subseqs_path, "rb") as read_file:
+            data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
         return data_dict[mode]
 
     @staticmethod
@@ -216,7 +235,7 @@ class RecWithContrastiveLearningDataset(Dataset):
 
         # create target item sets
         self.sem_tag = TargetSubseqs(args.data_dir, args.data_name, args.data_dir)
-        self.train_tag: dict[int, list[list[int]]] = self.sem_tag.load_target_subseqs_dict(
+        self.train_tag: dict[int, list[list[int]]] = self.sem_tag._load_target_subseqs_dict(
             f"{args.data_dir}/{args.data_name}_1_t.pkl", mode="train"
         )
 
@@ -246,7 +265,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         copied_input_ids = [0] * pad_len + copied_input_ids
         copied_input_ids = copied_input_ids[-self.max_len :]  #
         assert len(copied_input_ids) == self.max_len
-        if isinstance(target_pos, tuple):  # * train
+        if isinstance(target_pos, tuple):  # * train and cluster
             pad_len_1 = self.max_len - len(target_pos[1])
             target_pos_1 = [0] * pad_len + target_pos[0]
             target_pos_2 = [0] * pad_len_1 + target_pos[1]
@@ -254,6 +273,9 @@ class RecWithContrastiveLearningDataset(Dataset):
             target_pos_2 = target_pos_2[-self.max_len :]
             assert len(target_pos_1) == self.max_len
             assert len(target_pos_2) == self.max_len
+
+            subseqs_id = args.subseq_id_map[tuple(input_ids)]
+
         else:  # * valid and test
             target_pos = [0] * pad_len + target_pos
             target_pos = target_pos[-self.max_len :]
@@ -263,6 +285,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         if self.test_neg_items is None:
             return (
                 (
+                    torch.tensor(subseqs_id, dtype=torch.long),
                     torch.tensor(user_id, dtype=torch.long),
                     torch.tensor(copied_input_ids, dtype=torch.long),
                     torch.tensor(target_pos_1, dtype=torch.long),
@@ -462,7 +485,7 @@ if __name__ == "__main__":
     # * generate target item
     g = TargetSubseqs("../data", "Beauty", "../data")
     # * generate the dictionary
-    data = g.load_target_subseqs_dict("../data/Beauty_1_t.pkl", "train")
+    data = g._load_target_subseqs_dict("../data/Beauty_1_t.pkl", "train")
     i = 0
     # * Only one sequence in the data dictionary in the training phase has the target item ID
     for d_ in data:
