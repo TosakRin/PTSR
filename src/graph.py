@@ -9,24 +9,30 @@
  @/
 """
 
+import os
 import pickle
 
 import numpy as np
 import scipy.sparse as sp
 import torch
-import torch.utils.data as dataloader
-from scipy.sparse import csr_matrix  # type: ignore
-from scipy.sparse import coo_matrix, dok_matrix
-from tqdm import tqdm
+from scipy.sparse import coo_matrix  # type: ignore
 
 from cprint import pprint_color
+from datasets import TargetSubseqs
 from param import args
 from utils import get_max_item
 
 
 class Graph:
-    def __init__(self):
-        self.adj_path = "../data/Beauty_graph.pkl"
+    def __init__(
+        self,
+        adj_path,
+    ):
+        self.adj_path = adj_path
+        if not os.path.exists(self.adj_path):
+            raise FileNotFoundError(f'adjacency matrix not found in "{self.adj_path}"')
+        else:
+            self.load_graph()
 
     def norm_adj(self, mat: sp.csr_matrix) -> sp.coo_matrix:
         """
@@ -76,7 +82,7 @@ class Graph:
         idxs = torch.from_numpy(np.vstack([mat.row, mat.col]).astype(np.int64))
         vals = torch.from_numpy(mat.data.astype(np.float32))
         shape = torch.Size(mat.shape)
-        return torch.sparse.FloatTensor(idxs, vals, shape).cuda()
+        return torch.sparse_coo_tensor(idxs, vals, shape).cuda()
 
     def load_graph(self):
         with open(self.adj_path, "rb") as fs:
@@ -90,11 +96,22 @@ class Graph:
 
     @staticmethod
     def build_graph(
-        subseq_target_set: dict[str, dict[int, list[list[int]]]],
+        target_subseqs_dict: dict[int, list[list[int]]],
         subseq_id_map: dict[tuple[int], int],
         num_items: int,
         num_subseqs: int,
     ):
+        """graph is a sparse matrix, shape: [num_subseqs, num_items].
+
+        Args:
+            subseq_target_set (dict[str, dict[int, list[list[int]]]]): _description_
+            subseq_id_map (dict[tuple[int], int]): _description_
+            num_items (int): _description_
+            num_subseqs (int): _description_
+
+        Returns:
+            _type_: _description_
+        """
 
         pprint_color(f"==>> num_items: {num_items}")
         pprint_color(f"==>> num_subseqs: {num_subseqs}")
@@ -102,7 +119,7 @@ class Graph:
         sub_seq_list = []
         rating_list = []
 
-        for target_item, subseqs in subseq_target_set["train"].items():
+        for target_item, subseqs in target_subseqs_dict.items():
             # pprint_color(f"==>> target_item: {target_item}")
             # pprint_color(f"==>> subseqs: {subseqs}")
 
@@ -120,7 +137,7 @@ class Graph:
         pprint_color(f"==>> max target id: {np.max(target_item_array)}")
         pprint_color(f"==>> max subseq id: {np.max(subseq_array)}")
 
-        return coo_matrix((rating_array, (target_item_array, subseq_array)), (num_items, num_subseqs))
+        return coo_matrix((rating_array, (subseq_array, target_item_array)), (num_subseqs, num_items + 1))
 
     @staticmethod
     def print_sparse_matrix_info(graph):
@@ -139,3 +156,27 @@ class Graph:
         with open(save_path, "wb") as f:
             pickle.dump(graph, f)
             pprint_color(f">>> save graph to {save_path}")
+
+
+if __name__ == "__main__":
+    force_flag = True
+    dataset_list = [
+        "Beauty",
+        "ml-1m",
+        "Sports_and_Outdoors",
+        "Toys_and_Games",
+    ]
+    for dataset in dataset_list:
+        target_subseqs_dict_path = f"../data/{dataset}_1_t.pkl"
+        subseqs_path = f"../data/{dataset}_1.txt"
+        seqs_path = f"../data/{dataset}.txt"
+        sparse_matrix_path = f"../data/{dataset}_graph.pkl"
+        if os.path.exists(sparse_matrix_path) and not force_flag:
+            pprint_color(f'>>> "{sparse_matrix_path}" exists, skip.')
+            continue
+
+        target_subseqs_dict = TargetSubseqs.load_target_subseqs_dict(target_subseqs_dict_path)
+        subseq_id_map, id_subseq_map = TargetSubseqs.get_subseq_id_map(subseqs_path)
+        max_item = get_max_item(seqs_path)
+        graph = Graph.build_graph(target_subseqs_dict, subseq_id_map, max_item + 1, len(subseq_id_map))
+        Graph.save_sparse_matrix(sparse_matrix_path, graph)
