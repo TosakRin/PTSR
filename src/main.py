@@ -1,14 +1,12 @@
-import argparse
 import os
 import time
 from typing import Optional, Union
 
 import numpy as np
 import torch
-from scipy.sparse import csr_matrix  # type: ignore
 
 from cprint import pprint_color
-from datasets import DS, build_dataloader
+from datasets import DS, TargetSubseqs, build_dataloader
 from logger import set_logger
 from models import GRUEncoder, SASRecModel
 from param import args, print_args_info
@@ -73,6 +71,9 @@ def main() -> None:
 
     # * set item score in train set to `0` in validation
     args.rating_matrix = valid_rating_matrix
+
+    args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.train_data_file)
+    args.subseq_id_num = len(args.subseq_id_map)
 
     if not args.do_eval:
         train_dataloader = build_dataloader(train_user_seq, "train")
