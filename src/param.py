@@ -3,9 +3,9 @@
  @Author       : TosakRin sick_person@outlook.com
  @Date         : 2024-03-21 18:16:35
  @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-03-23 20:23:49
+ @LastEditTime : 2024-03-28 22:42:03
  @FilePath     : /ICSRec/src/param.py
- @Description  : argument parser
+ @Description  :
  @/
 """
 
@@ -74,6 +74,9 @@ def parse_args() -> argparse.Namespace:
 
     # * learning related
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight_decay of adam")
+
+    # * GNN
+    parser.add_argument("--gnn_layer", default=2, type=int, help="number of gnn layers")
 
     return parser.parse_args()
 
