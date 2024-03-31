@@ -264,37 +264,3 @@ class GCNLayer(nn.Module):
         return torch_sparse.spmm(adj.indices(), adj.values(), adj.shape[0], adj.shape[1], embeds)
 
 
-class GCN(nn.Module):
-    """LightGCN model."""
-    def __init__(self):
-        super().__init__()
-        self.gcn_layers = nn.Sequential(*[GCNLayer() for _ in range(args.gnn_layer)])
-
-    def forward(self, adj, subseq_emb: Tensor, target_emb: Tensor):
-        """Forward pass of the GCN model.
-
-        Args:
-            adj (_type_): D^(-1/2) * A * D^(-1/2)
-            subseq (Tensor): subseq item embedding (Transformer output)
-            target (Tensor): target item embedding.
-
-        Returns:
-            tuple(Tensor, Tensor): aggregation of subseq and target item embeddings.
-        """
-        ini_emb = torch.concat([subseq_emb, target_emb], axis=0)
-        layers_gcn_emb_list = [ini_emb]
-        for gcn in self.gcn_layers:
-            # * layers_gcn_emb_list[-1]: use the last layer's output as input
-            gcn_emb = gcn(adj, layers_gcn_emb_list[-1])
-            layers_gcn_emb_list.append(gcn_emb)
-        sum_emb = sum(layers_gcn_emb_list)
-        # todo: 获取这个 unique subseq 数量的变量
-        return sum_emb[: args.num_subseqs], sum_emb[args.args.num_subseqs :]
-
-    def get_emb(self):
-        self.unfreeze(self.gcn_layers)
-        # todo: embedding 放在哪个 Model 里?
-        return torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
-
-    def get_gcn(self):
-        return self.gcn_layers

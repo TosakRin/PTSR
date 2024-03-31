@@ -13,7 +13,7 @@ import torch
 from torch import Tensor, nn
 
 from cprint import pprint_color
-from modules import Encoder, LayerNorm
+from modules import Encoder, GCNLayer, LayerNorm
 from param import args
 
 
@@ -109,10 +109,10 @@ class KMeans:
 class SASRecModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.item_embeddings = nn.Embedding(
-            num_embeddings=args.item_size, embedding_dim=args.hidden_size, padding_idx=0
-        )
-        self.position_embeddings = nn.Embedding(num_embeddings=args.max_seq_length, embedding_dim=args.hidden_size)
+        # * args.item_size: max_item + 2, 0 for padding.
+        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
+        self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
+        self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
@@ -228,3 +228,38 @@ class GRUEncoder(nn.Module):
         seq_output = gru_output
         return seq_output
 
+
+class GCN(nn.Module):
+    """LightGCN model."""
+
+    def __init__(self):
+        super().__init__()
+        self.gcn_layers = nn.Sequential(*[GCNLayer() for _ in range(args.gnn_layer)])
+
+    def forward(self, adj, subseq_emb: Tensor, target_emb: Tensor):
+        """Forward pass of the GCN model.
+
+        Args:
+            adj (_type_): D^(-1/2) * A * D^(-1/2)
+            subseq (Tensor): subseq item embedding (Transformer output)
+            target (Tensor): target item embedding.
+
+        Returns:
+            tuple(Tensor, Tensor): aggregation of subseq and target item embeddings.
+        """
+        ini_emb = torch.concat([subseq_emb, target_emb], axis=0)
+        layers_gcn_emb_list = [ini_emb]
+        for gcn in self.gcn_layers:
+            # * layers_gcn_emb_list[-1]: use the last layer's output as input
+            gcn_emb = gcn(adj, layers_gcn_emb_list[-1])
+            layers_gcn_emb_list.append(gcn_emb)
+        sum_emb = sum(layers_gcn_emb_list)
+        return sum_emb[: args.subseq_id_num], sum_emb[args.subseq_id_num :]
+
+    def get_emb(self):
+        self.unfreeze(self.gcn_layers)
+        # todo: embedding 放在哪个 Model 里?
+        return torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
+
+    def get_gcn(self):
+        return self.gcn_layers
