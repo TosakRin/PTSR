@@ -8,6 +8,8 @@
 
 
 import gc
+import warnings
+from collections import OrderedDict
 from typing import Optional, Union
 
 import numpy as np
@@ -16,12 +18,16 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.optim import Adam
 from torch.utils.data.dataloader import DataLoader
-from tqdm import tqdm
+from tqdm import TqdmExperimentalWarning
+from tqdm.rich import tqdm
 
 from cprint import pprint_color
+from graph import Graph
 from metric import get_metric, ndcg_k, recall_at_k
-from models import GRUEncoder, KMeans, SASRecModel
+from models import GCN, GRUEncoder, KMeans, SASRecModel
 from param import args
+
+warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
 
 class Trainer:
@@ -39,6 +45,7 @@ class Trainer:
         cuda_condition = torch.cuda.is_available() and not args.no_cuda
         self.device: torch.device = torch.device("cuda" if cuda_condition else "cpu")
         self.model = model
+        self.gcn = GCN()
         if cuda_condition:
             self.model.cuda()
 
@@ -61,8 +68,8 @@ class Trainer:
         self.test_dataloader = test_dataloader
 
         # todo: get_graph
-        # self.graph = get_graph(subseq_target_set, num_items, num_subseqs)
-
+        graph_path = f"{args.data_dir}/{args.data_name}_graph.pkl"
+        self.graph = Graph(graph_path)
         self.optim = Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
         pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
@@ -223,7 +230,7 @@ class Trainer:
         """Predict: Rating = User_seq_emb * Item_emb^T.
 
         Args:
-            seq_out (Tensor): User sequence output. Use the last item output of last layer. SHAPE: [batch_size, hidden_size] -> [256, 64]
+            user_seq_emb (Tensor): User sequence output. Use the last item output of last layer. SHAPE: [batch_size, hidden_size] -> [256, 64]
 
         Returns:
             Tensor: Rating prediction. SHAPE: [batch_size, item_size]
@@ -234,7 +241,6 @@ class Trainer:
         rating_pred = torch.matmul(user_seq_emb, test_item_emb.transpose(0, 1))
         return rating_pred
 
-    # todo
     def cicl_loss(self, coarse_intents: list[Tensor], target_item):
         """Coarse Intents: make 2 subsequence with the same target item closer by infoNCE.
 
@@ -328,7 +334,7 @@ class ICSRecTrainer(Trainer):
         for _, (rec_batch) in tqdm(enumerate(train_dataloader), total=batch_num):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            _, subsequence_1, target_pos_1, subsequence_2, _ = rec_batch
+            _, _, subsequence_1, target_pos_1, subsequence_2, _ = rec_batch
 
             # * prediction task
             intent_output = self.model(subsequence_1)
@@ -353,6 +359,7 @@ class ICSRecTrainer(Trainer):
 
             self.optim.zero_grad()
             joint_loss.backward()
+            # self.model.zero_grad_padding_idx()
             self.optim.step()
 
             rec_avg_loss += rec_loss.item()
@@ -377,25 +384,51 @@ class ICSRecTrainer(Trainer):
         args.logger.info(str(post_fix))
 
     def cluster_epoch(self, cluster_dataloader):
+        """
+        cluster datalooader contains
+        5 tensors: user_id, input_id, target_pos_1, target_pos_2, anwser
+        user_id, answer SHAPE: batch_size x 1
+        input_id, target_pos_1, target_pos_2 SHAPE: batch_size x seq_len
+
+        Args:
+            cluster_dataloader (Dataloader): _description_
+        """
         assert cluster_dataloader is not None
         pprint_color(">>> Train Clustering in Train Epoch:")
         self.model.eval()
-        # * save N
         kmeans_training_data = []
 
-        for i, (rec_batch) in tqdm(enumerate(cluster_dataloader), total=len(cluster_dataloader)):
+        subseq_embedding_dict = OrderedDict()
+
+        for _, (rec_batch) in tqdm(
+            enumerate(cluster_dataloader),
+            total=len(cluster_dataloader),
+        ):
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-
-            # * 5 tensors: user_id, input_id, target_pos_1, target_pos_2, anwser
-            # * user_id, answer SHAPE: batch_size x 1
-            # * input_id, target_pos_1, target_pos_2 SHAPE: batch_size x seq_len
-
-            _, subsequence, _, _, _ = rec_batch
+            subseq_id, _, subsequence, _, _, _ = rec_batch
             # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-            sequence_output_a = self.model(subsequence)
-            # * SHAPE: [Batch_size, Hidden_size] -> [256, 64], use the last item output.
-            sequence_output_b = sequence_output_a[:, -1, :]  # [BxH]
-            kmeans_training_data.append(sequence_output_b.detach().cpu().numpy())
+            seq_output_last_layer = self.model(subsequence)
+            # * SHAPE: [Batch_size, Hidden_size] -> [256, 64], use the last item as output.
+            seq_output_last_item = seq_output_last_layer[:, -1, :]
+            # * detach: Returns a new Tensor, detached from the current graph. The result will never require gradient.
+            seq_output_last_item = seq_output_last_item.detach().cpu().numpy()
+            kmeans_training_data.append(seq_output_last_item)
+
+            for i in range(subseq_id.shape[0]):
+                subseq_embedding_dict.setdefault(subseq_id[i].item(), seq_output_last_item[i])
+
+        pprint_color(max(subseq_embedding_dict.keys()))
+        pprint_color(f"==>> subseq_embedding_dict: {len(subseq_embedding_dict)}")
+
+        subseq_emb_list = list(subseq_embedding_dict.values())
+        self.model.subseqs_embeddings = nn.Embedding.from_pretrained(torch.Tensor(subseq_emb_list))
+        subseq_emb = nn.Parameter(self.model.subseqs_embeddings.weight).to(self.device)
+        pprint_color(f"==>> subseq_emb: {subseq_emb.shape}")
+        item_emb = nn.Parameter(self.model.item_embeddings.weight).to(self.device)
+        pprint_color(f"==>> item_emb: {item_emb.shape}")
+
+        _, augment_item_emb = self.gcn(self.graph.torch_A, subseq_emb, item_emb)
+        self.model.item_embeddings = nn.Embedding.from_pretrained(augment_item_emb)
 
         # * SHAPE: [SubSeq_num, Hidden_size] -> [131413, 64]
         kmeans_training_data = np.concatenate(kmeans_training_data, axis=0)
