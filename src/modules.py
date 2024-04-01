@@ -8,10 +8,8 @@
 import copy
 import math
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-import torch_sparse
 from torch import Tensor, nn
 
 from param import args
@@ -258,9 +256,5 @@ class GCNLayer(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, adj, embeds, flag=True):
-        if flag:
-            return torch.spmm(adj, embeds)
-        return torch_sparse.spmm(adj.indices(), adj.values(), adj.shape[0], adj.shape[1], embeds)
-
-
+    def forward(self, adj, embeds):
+        return torch.spmm(adj, embeds)
