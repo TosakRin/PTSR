@@ -475,7 +475,14 @@ def build_dataloader(user_seq, loader_type):
     sampler = RandomSampler if loader_type == "train" else SequentialSampler
     pprint_color(f">>> Building {loader_type} Dataloader")
     dataset = RecWithContrastiveLearningDataset(user_seq, data_type=data_type)
-    return DataLoader(dataset, sampler=sampler(dataset), batch_size=args.batch_size)
+    return DataLoader(
+        dataset,
+        sampler=sampler(dataset),
+        batch_size=args.batch_size,
+        num_workers=16,
+        pin_memory=True,
+        prefetch_factor=8
+    )
 
 
 if __name__ == "__main__":
