@@ -113,6 +113,10 @@ class SASRecModel(nn.Module):
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
         # self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
+
+        self.adagrad_params = [self.item_embeddings.weight]
+        self.adam_params = [p for n, p in self.named_parameters() if n != "item_embeddings.weight"]
+
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
