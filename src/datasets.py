@@ -245,7 +245,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         """post-processing the data sample to Tensor for the RecWithContrastiveLearningDataset from __getitem__:
 
         1. padding
-        2. truncating
+        2. truncating, example: [0, 0, ..., 1, 2, 3]
         3. assembling
 
         Args:

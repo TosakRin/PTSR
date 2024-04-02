@@ -112,7 +112,7 @@ class SASRecModel(nn.Module):
         # * args.item_size: max_item + 2, 0 for padding.
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
-        self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
+        # self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
@@ -121,13 +121,18 @@ class SASRecModel(nn.Module):
         self.apply(self.init_weights)
 
     def add_position_embedding(self, sequence: Tensor):
-        """Add positional embeddings to item embeddings.
+        """
+
+        1. Transfer idx to embedding
+        2. Add position embedding
+        3. LayerNorm
+        4. dropout
 
         Args:
             sequence (Tensor): [256, 50] -> [batch_size, seq_length]
 
         Returns:
-            _type_: _description_
+            Tensor: _description_
         """
         seq_length: int = sequence.size(1)
         position_ids = torch.arange(seq_length, dtype=torch.long, device=sequence.device)
@@ -160,7 +165,7 @@ class SASRecModel(nn.Module):
             subsequent_mask = subsequent_mask.cuda()
 
         # * Hadamand product and boardcast
-        # * shape: [batch_size, 1, seq_length, seq_length]
+        # * mask SHAPE: [batch_size, 1, seq_length, seq_length]
         extended_attention_mask = extended_attention_mask * subsequent_mask
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
@@ -253,13 +258,5 @@ class GCN(nn.Module):
             # * layers_gcn_emb_list[-1]: use the last layer's output as input
             gcn_emb = gcn(adj, layers_gcn_emb_list[-1])
             layers_gcn_emb_list.append(gcn_emb)
-        sum_emb = sum(layers_gcn_emb_list)
+        sum_emb = sum(layers_gcn_emb_list) / len(layers_gcn_emb_list)
         return sum_emb[: args.subseq_id_num], sum_emb[args.subseq_id_num :]
-
-    def get_emb(self):
-        self.unfreeze(self.gcn_layers)
-        # todo: embedding 放在哪个 Model 里?
-        return torch.concat([self.uEmbeds, self.iEmbeds], axis=0)
-
-    def get_gcn(self):
-        return self.gcn_layers

@@ -105,8 +105,7 @@ def get_max_item(data_file):
     max_item = 0
     with open(data_file, encoding="utf-8") as f:
         for line in f:
-            numbers = [int(item) for item in line.split()[1:]]
-            if numbers:
+            if numbers := [int(item) for item in line.split()[1:]]:
                 max_item = max(max_item, max(numbers))
     return max_item
 
@@ -117,7 +116,7 @@ class EarlyStopping:
     score_min: np.ndarray
     best_score: np.ndarray = np.array([])
 
-    def __init__(self, checkpoint_path: str, patience=7, verbose=False, delta=0):
+    def __init__(self, checkpoint_path: str, latest_path, patience=7, verbose=False, delta=0):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved.
@@ -128,6 +127,7 @@ class EarlyStopping:
                             Default: 0
         """
         self.checkpoint_path = checkpoint_path
+        self.latest_path = latest_path
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
