@@ -1,9 +1,10 @@
 import os
 import time
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
 from cprint import pprint_color
 from datasets import DS, TargetSubseqs, build_dataloader
@@ -46,7 +47,6 @@ def main() -> None:
     max_item = get_max_item(args.data_file)
     num_users = get_num_users(args.data_file)
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
-    # ? 为什么要加 2
     args.item_size = max_item + 2
     args.mask_id = max_item + 1
 
@@ -58,16 +58,19 @@ def main() -> None:
     )
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
 
-    print_args_info(args)
-
+    args_info = print_args_info(args)
     save_time = time.strftime("%Y%m%d-%H%M%S")
-    save_name = f"{save_time}-{args.model_name}-{args.data_name}"
+    save_name = f"{save_time}-{args.model_name}-{args.data_name}-{args.msg}"
     log_path = os.path.join(args.output_dir, save_name)
     args.logger = set_logger(name="exp_log", save_flag=True, save_path=log_path, save_type="file", train_flag=True)
     args.logger.info(save_name)
+    args.logger.info(args_info)
+    tb_path = os.path.join("runs", save_name)
+    args.tb = SummaryWriter(log_dir=tb_path)
 
     checkpoint = f"{save_name}.pt"
     args.checkpoint_path = os.path.join(args.output_dir, checkpoint)
+
 
     # * set item score in train set to `0` in validation
     args.rating_matrix = valid_rating_matrix
@@ -92,30 +95,35 @@ def main() -> None:
     trainer = ICSRecTrainer(model, train_dataloader, cluster_dataloader, eval_dataloader, test_dataloader)
 
     if args.do_eval:
-        args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-0.pt")
+        args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-latest.pt")
     else:
-        pprint_color(">>> Train ICSRec Start")
-        early_stopping = EarlyStopping(args.checkpoint_path, patience=40, verbose=True)
-        for epoch in range(args.epochs):
-            trainer.train(epoch)
-            # * evaluate on NDCG@20
-            scores, _ = trainer.valid(epoch, full_sort=True)
-            early_stopping(np.array(scores[-1:]), trainer.model)
-            if early_stopping.early_stop:
-                pprint_color(">>> Early stopping")
-                break
-        pprint_color("---------------Change to test_rating_matrix-------------------")
-    do_eval(trainer, args, test_rating_matrix)
+        do_train(trainer)
+    do_eval(trainer, test_rating_matrix)
 
 
-def do_eval(trainer, args, test_rating_matrix):
+def do_train(trainer):
+    pprint_color(">>> Train ICSRec Start")
+    early_stopping = EarlyStopping(args.checkpoint_path, args.latest_path, patience=50)
+    for epoch in range(args.epochs):
+            args.rating_matrix = valid_rating_matrix
+        trainer.train(epoch)
+        # * evaluate on NDCG@20
+        scores, _ = trainer.valid(epoch, full_sort=True)
+        early_stopping(np.array(scores[-1:]), trainer.model)
+        args.rating_matrix = test_rating_matrix
+        _, _ = trainer.test(epoch, full_sort=True)
+        if early_stopping.early_stop:
+            pprint_color(">>> Early stopping")
+            break
+    pprint_color("--------------- Change to test_rating_matrix -------------------")
+
+
+def do_eval(trainer, test_rating_matrix):
     pprint_color(">>> Test ICSRec Start")
-    pprint_color(f">>> Load model from {args.checkpoint_path} for test")
-    trainer.args.rating_matrix = test_rating_matrix
-    trainer.load(args.checkpoint_path)
+    pprint_color(f'>>> Load model from "{args.latest_path}" for test')
+    args.rating_matrix = test_rating_matrix
+    trainer.load(args.latest_path)
     scores, result_info = trainer.test(0, full_sort=True)
-    pprint_color(result_info)
-    args.logger.info(result_info)
 
 
 if __name__ == "__main__":
