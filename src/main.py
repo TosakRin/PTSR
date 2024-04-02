@@ -97,15 +97,15 @@ def main() -> None:
     if args.do_eval:
         args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-latest.pt")
     else:
-        do_train(trainer)
+        do_train(trainer, valid_rating_matrix, test_rating_matrix)
     do_eval(trainer, test_rating_matrix)
 
 
-def do_train(trainer):
+def do_train(trainer, valid_rating_matrix, test_rating_matrix):
     pprint_color(">>> Train ICSRec Start")
     early_stopping = EarlyStopping(args.checkpoint_path, args.latest_path, patience=50)
     for epoch in range(args.epochs):
-            args.rating_matrix = valid_rating_matrix
+        args.rating_matrix = valid_rating_matrix
         trainer.train(epoch)
         # * evaluate on NDCG@20
         scores, _ = trainer.valid(epoch, full_sort=True)
