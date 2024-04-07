@@ -417,6 +417,9 @@ class ICSRecTrainer(Trainer):
             else:
                 icl_losses += icl_loss
             joint_avg_loss += joint_loss.item()
+            args.tb.add_scalar("batch_loss/rec_loss", rec_loss.item(), epoch * batch_num + batch_i, new_style=True)
+            # args.tb.add_scalar("batch_train/icl_loss", icl_loss.item(), epoch * batch_num + batch_i, new_style=True)
+            args.tb.add_scalar("batch_loss/joint_loss", joint_loss.item(), epoch * batch_num + batch_i, new_style=True)
 
         # * print & write log for each epoch
         # * post_fix: print the average loss of the epoch
