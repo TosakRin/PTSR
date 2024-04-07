@@ -176,7 +176,12 @@ class Trainer:
             if key in self.best_scores[mode]:
                 self.best_scores[mode][key] = max(self.best_scores[mode][key], value)
             if key != "Epoch":
-                args.tb.add_scalar(f"best_{mode}/best_{key}", value, self.best_scores[mode][key], new_style=True)
+                args.tb.add_scalar(
+                    f"best_{mode}/best_{key}",
+                    self.best_scores[mode][key],
+                    self.best_scores[mode]["Epoch"],
+                    new_style=True,
+                )
         args.logger.critical(f"{self.best_scores[mode]}")
 
     def save(self, file_name: str):
@@ -371,7 +376,7 @@ class ICSRecTrainer(Trainer):
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
-        for _, (rec_batch) in tqdm(
+        for batch_i, (rec_batch) in tqdm(
             enumerate(train_dataloader),
             total=batch_num,
             leave=False,
@@ -418,9 +423,12 @@ class ICSRecTrainer(Trainer):
             else:
                 icl_losses += icl_loss
             joint_avg_loss += joint_loss.item()
-            args.tb.add_scalar("batch_loss/rec_loss", rec_loss.item(), epoch * batch_num + batch_i, new_style=True)
-            # args.tb.add_scalar("batch_train/icl_loss", icl_loss.item(), epoch * batch_num + batch_i, new_style=True)
-            args.tb.add_scalar("batch_loss/joint_loss", joint_loss.item(), epoch * batch_num + batch_i, new_style=True)
+            if args.batch_loss:
+                args.tb.add_scalar("batch_loss/rec_loss", rec_loss.item(), epoch * batch_num + batch_i, new_style=True)
+                # args.tb.add_scalar("batch_train/icl_loss", icl_loss.item(), epoch * batch_num + batch_i, new_style=True)
+                args.tb.add_scalar(
+                    "batch_loss/joint_loss", joint_loss.item(), epoch * batch_num + batch_i, new_style=True
+                )
 
         self.scheduler.step()
         # * print & write log for each epoch
