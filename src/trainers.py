@@ -373,7 +373,7 @@ class ICSRecTrainer(Trainer):
             enumerate(train_dataloader),
             total=batch_num,
             leave=False,
-            desc=f"{args.msg} | Device: {args.gpu_id} | Rec Training Epoch {epoch}",
+            desc=f"{args.save_name} | Device: {args.gpu_id} | Rec Training Epoch {epoch}",
             dynamic_ncols=True,
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
@@ -469,7 +469,7 @@ class ICSRecTrainer(Trainer):
         for _, (rec_batch) in tqdm(
             enumerate(cluster_dataloader),
             total=len(cluster_dataloader),
-            desc=f"{args.msg} | Device: {args.gpu_id} | Cluster Training",
+            desc=f"{args.save_name} | Device: {args.gpu_id} | Cluster Training",
             leave=False,
             dynamic_ncols=True,
         ):
@@ -515,7 +515,7 @@ class ICSRecTrainer(Trainer):
                 enumerate(dataloader),
                 total=len(dataloader),
                 leave=False,
-                desc=f"{args.msg} | Device: {args.gpu_id} | Test Epoch {epoch}",
+                desc=f"{args.save_name} | Device: {args.gpu_id} | Test Epoch {epoch}",
                 dynamic_ncols=True,
             ):
                 batch = tuple(t.to(self.device) for t in batch)
@@ -584,7 +584,7 @@ class ICSRecTrainer(Trainer):
         for _, (rec_batch) in tqdm(
             enumerate(gcn_dataloader),
             total=len(gcn_dataloader),
-            desc=f"{args.msg} | Device: {args.gpu_id} | GCN Training",
+            desc=f"{args.save_name} | Device: {args.gpu_id} | GCN Training",
             leave=False,
             dynamic_ncols=True,
         ):
