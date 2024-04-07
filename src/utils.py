@@ -10,6 +10,7 @@ import json
 import math
 import os
 import random
+from ast import literal_eval
 from typing import Literal
 
 import numpy as np
@@ -17,6 +18,7 @@ import torch
 from scipy.sparse import csr_matrix  # type: ignore
 
 from cprint import pprint_color
+from param import args
 
 
 def set_seed(seed: int):
@@ -265,3 +267,36 @@ def get_item2attribute_json(data_file):
         attribute_set = attribute_set | set(attributes)
     attribute_size = max(attribute_set)  # 331
     return item2attribute, attribute_size
+
+
+def get_scheduler(optimizer):
+    if args.scheduler == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+    elif args.scheduler == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.T_max, eta_min=args.min_lr)
+    elif args.scheduler == "plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=args.factor, patience=args.patience, verbose=True
+        )
+    elif args.scheduler == "multistep":
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=literal_eval(args.milestones), gamma=args.gamma)
+        pprint_color(f">>> scheduler: {args.scheduler}, milestones: {args.milestones}, gamma: {args.gamma}")
+    elif args.scheduler == "warmup+cosine":
+        warm_up_with_cosine_lr = lambda epoch: (
+            epoch / args.warm_up_epochs
+            if epoch <= args.warm_up_epochs
+            else 0.5 * (math.cos((epoch - args.warm_up_epochs) / (args.epochs - args.warm_up_epochs) * math.pi) + 1)
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=args.T_0, T_mult=args.T_mult, eta_min=args.min_lr
+        )
+    elif args.scheduler == "warmup+multistep":
+        warm_up_with_multistep_lr = lambda epoch: (
+            epoch / args.warm_up_epochs
+            if epoch <= args.warm_up_epochs
+            else args.gamma ** len([m for m in literal_eval(args.milestones) if m <= epoch])
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warm_up_with_multistep_lr)
+    else:
+        raise ValueError("Invalid scheduler")
+    return scheduler

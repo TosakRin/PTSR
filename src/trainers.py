@@ -19,7 +19,6 @@
 
 
 import gc
-import math
 import warnings
 from collections import OrderedDict
 from typing import Optional, Union
@@ -38,6 +37,7 @@ from graph import Graph
 from metric import get_metric, ndcg_k, recall_at_k
 from models import GCN, GRUEncoder, KMeans, SASRecModel
 from param import args
+from utils import get_scheduler
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -86,6 +86,7 @@ class Trainer:
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
+        self.scheduler = get_scheduler(self.optim_adam)
 
         self.best_scores = {
             "valid": {
@@ -368,6 +369,7 @@ class ICSRecTrainer(Trainer):
         joint_avg_loss = 0.0
         icl_losses = 0.0
         batch_num = len(train_dataloader)
+        args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
         for _, (rec_batch) in tqdm(
             enumerate(train_dataloader),
@@ -409,7 +411,6 @@ class ICSRecTrainer(Trainer):
 
             # self.optim_adagrad.step()
             self.optim_adam.step()
-            # self.scheduler.step()
 
             rec_avg_loss += rec_loss.item()
             if not isinstance(icl_loss, float):
@@ -421,6 +422,7 @@ class ICSRecTrainer(Trainer):
             # args.tb.add_scalar("batch_train/icl_loss", icl_loss.item(), epoch * batch_num + batch_i, new_style=True)
             args.tb.add_scalar("batch_loss/joint_loss", joint_loss.item(), epoch * batch_num + batch_i, new_style=True)
 
+        self.scheduler.step()
         # * print & write log for each epoch
         # * post_fix: print the average loss of the epoch
         post_fix = {
