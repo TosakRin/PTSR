@@ -29,7 +29,7 @@ def main() -> None:
     check_path(args.output_dir)
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
-    pprint_color(f">>> Using Cuda: {torch.cuda.is_available()}")
+    pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
     args.data_file = f"{args.data_dir}{args.data_name}.txt"
     args.train_data_file = f"{args.data_dir}{args.data_name}_1.txt"
 
@@ -112,8 +112,10 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
         # * evaluate on NDCG@20
         scores, _ = trainer.valid(epoch, full_sort=True)
         early_stopping(np.array(scores[-1:]), trainer.model)
-        args.rating_matrix = test_rating_matrix
-        _, _ = trainer.test(epoch, full_sort=True)
+        # * test on while training
+        if args.do_test:
+            args.rating_matrix = test_rating_matrix
+            _, _ = trainer.test(epoch, full_sort=True)
         if early_stopping.early_stop:
             pprint_color(">>> Early stopping")
             break
