@@ -86,12 +86,27 @@ class Trainer:
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
-        # warm_up_with_cosine_lr = lambda epoch: (
-        #     epoch / args.warm_up_epochs
-        #     if epoch <= args.warm_up_epochs
-        #     else 0.5 * (math.cos((epoch - args.warm_up_epochs) / (args.epochs - args.warm_up_epochs) * math.pi) + 1)
-        # )
-        # self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optim, lr_lambda=warm_up_with_cosine_lr)
+
+        self.best_scores = {
+            "valid": {
+                "Epoch": 0,
+                "HIT@5": 0.0,
+                "NDCG@5": 0.0,
+                "HIT@10": 0.0,
+                "NDCG@10": 0.0,
+                "HIT@20": 0.0,
+                "NDCG@20": 0.0,
+            },
+            "test": {
+                "Epoch": 0,
+                "HIT@5": 0.0,
+                "NDCG@5": 0.0,
+                "HIT@10": 0.0,
+                "NDCG@10": 0.0,
+                "HIT@20": 0.0,
+                "NDCG@20": 0.0,
+            }
+        }
 
         pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
@@ -146,18 +161,22 @@ class Trainer:
             "NDCG@20": round(ndcg[3], 4),
         }
 
-        # # args.tb.add_scalars(f"{mode}/Recall", {"HIT@5": recall[0], "HIT@10": recall[1], "HIT@20": recall[3]}, epoch)
-        # # args.tb.add_scalars(f"{mode}/NDCG", {"NDCG@5": ndcg[0], "NDCG@10": ndcg[1], "NDCG@20": ndcg[3]}, epoch)
-        # args.tb.add_scalars(f"{mode}/Recall@5", recall[0], epoch)
-        # args.tb.add_scalars(f"{mode}/NDCG", {ndcg[0], ndcg[1], ndcg[3]}, epoch)
-
         for key, value in post_fix.items():
             if key != "Epoch":
                 args.tb.add_scalar(f"{mode}/{key}", value, epoch, new_style=True)
 
         # pprint_color(post_fix)
-        args.logger.critical(str(post_fix))
+        args.logger.warning(post_fix)
+        self.get_best_score(post_fix, mode)
         return [recall[0], ndcg[0], recall[1], ndcg[1], recall[3], ndcg[3]], str(post_fix)
+
+    def get_best_score(self, scores, mode):
+        for key, value in scores.items():
+            if key in self.best_scores[mode]:
+                self.best_scores[mode][key] = max(self.best_scores[mode][key], value)
+            if key != "Epoch":
+                args.tb.add_scalar(f"best_{mode}/best_{key}", value, self.best_scores[mode][key], new_style=True)
+        args.logger.critical(f"{self.best_scores[mode]}")
 
     def save(self, file_name: str):
         """Save the model to the file_name"""
