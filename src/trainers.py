@@ -284,20 +284,6 @@ class Trainer:
         logits = torch.cat((positive_samples, negative_samples), dim=1)
         return logits, labels
 
-    def predict_full(self, user_seq_emb: Tensor):
-        """Predict: Rating = User_seq_emb * Item_emb^T.
-
-        Args:
-            user_seq_emb (Tensor): User sequence output. Use the last item output of last layer. SHAPE: [batch_size, hidden_size] -> [256, 64]
-
-        Returns:
-            Tensor: Rating prediction. SHAPE: [batch_size, item_size]
-        """
-        # * SHAPE: [Item_size, Hidden_size]
-        test_item_emb = self.model.item_embeddings.weight
-        # * SHAPE: [Batch_size, Item_size]
-        rating_pred = torch.matmul(user_seq_emb, test_item_emb.transpose(0, 1))
-        return rating_pred
 
     def cicl_loss(self, coarse_intents: list[Tensor], target_item):
         """Coarse Intents: make 2 subsequence with the same target item closer by infoNCE.
@@ -398,7 +384,7 @@ class ICSRecTrainer(Trainer):
 
             # * prediction task
             intent_output = self.model(subsequence_1)
-            logits = self.predict_full(intent_output[:, -1, :])
+            logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
             cicl_loss, ficl_loss = (
@@ -525,7 +511,7 @@ class ICSRecTrainer(Trainer):
                 recommend_output = recommend_output[:, -1, :]  # [BxH]
 
                 # * recommendation results. SHAPE: [Batch_size, Item_size]
-                rating_pred = self.predict_full(recommend_output)
+                rating_pred = self.model.predict_full(recommend_output)
                 rating_pred = rating_pred.cpu().data.numpy().copy()
                 batch_user_index = user_ids.cpu().numpy()
 

@@ -193,6 +193,26 @@ class SASRecModel(nn.Module):
         if isinstance(module, nn.Linear) and module.bias is not None:
             module.bias.data.zero_()
 
+    def predict_full(self, user_seq_emb: Tensor):
+        """Predict: Rating = User_seq_emb * Item_emb^T.
+
+        Args:
+            user_seq_emb (Tensor): User sequence output. Use the last item output of last layer. SHAPE: [batch_size, hidden_size] -> [256, 64]
+
+        Returns:
+            Tensor: Rating prediction. SHAPE: [batch_size, item_size]
+        """
+        # * SHAPE: [Item_size, Hidden_size]
+        if args.gcn_mode == "batch":
+            test_item_emb = self.all_item_emb
+        elif args.gcn_mode == "global":
+            test_item_emb = self.gcn_embeddings.weight + self.item_embeddings.weight
+        elif args.gcn_mode == "None":
+            test_item_emb = self.item_embeddings.weight
+        else:
+            raise ValueError(f"Invalid gcn_mode: {args.gcn_mode}")
+        return torch.matmul(user_seq_emb, test_item_emb.transpose(0, 1))
+
 
 # GRU Encoder
 class GRUEncoder(nn.Module):
