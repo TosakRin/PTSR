@@ -258,3 +258,14 @@ class GCNLayer(nn.Module):
 
     def forward(self, adj, embeds):
         return torch.spmm(adj, embeds)
+
+
+class NGCFLayer(nn.Module):
+
+    def __init__(self, in_features=args.hidden_size, out_features=args.hidden_size):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features, bias=False)
+
+    def forward(self, adj, embeds):
+        embeds = self.linear(embeds)
+        return F.relu(torch.spmm(adj, embeds))
