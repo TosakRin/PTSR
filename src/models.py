@@ -151,8 +151,7 @@ class SASRecModel(nn.Module):
         return sequence_emb
 
     # model same as SASRec
-    def forward(self, input_ids: Tensor):
-
+    def get_transformer_mask(self, input_ids: Tensor):
         # * Shape: [batch_size, seq_length]
         attention_mask = (input_ids > 0).long()
         # * Shape: [batch_size, 1, 1, seq_length]
@@ -173,13 +172,7 @@ class SASRecModel(nn.Module):
         extended_attention_mask = extended_attention_mask * subsequent_mask
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-
-        sequence_emb: Tensor = self.add_position_embedding(input_ids)
-
-        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
-
-        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
-        return item_encoded_layers[-1]
+        return extended_attention_mask
 
     def init_weights(self, module):
         """Initialize the weights."""
