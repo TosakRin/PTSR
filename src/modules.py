@@ -252,7 +252,7 @@ class Encoder(nn.Module):
         return all_encoder_layers
 
 
-class GCNLayer(nn.Module):
+class LigthGCNLayer(nn.Module):
     def __init__(self):
         super().__init__()
 

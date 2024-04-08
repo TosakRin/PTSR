@@ -13,7 +13,7 @@ import torch
 from torch import Tensor, nn
 
 from cprint import pprint_color
-from modules import Encoder, GCNLayer, LayerNorm
+from modules import Encoder, LayerNorm, LigthGCNLayer, NGCFLayer
 from param import args
 
 
@@ -203,7 +203,7 @@ class SASRecModel(nn.Module):
             Tensor: Rating prediction. SHAPE: [batch_size, item_size]
         """
         # * SHAPE: [Item_size, Hidden_size]
-        if args.gcn_mode == "batch":
+        if args.gcn_mode in ["batch", "batch_gcn"]:
             test_item_emb = self.all_item_emb
         elif args.gcn_mode == "global":
             test_item_emb = self.gcn_embeddings.weight + self.item_embeddings.weight
@@ -263,7 +263,11 @@ class GCN(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.gcn_layers = nn.Sequential(*[GCNLayer() for _ in range(args.gnn_layer)])
+        # * LightGCN
+        if args.gcn_mode in ["batch", "global"]:
+            self.gcn_layers = nn.Sequential(*[LigthGCNLayer() for _ in range(args.gnn_layer)])
+        elif args.gcn_mode in ["batch_gcn"]:
+            self.gcn_layers = nn.Sequential(*[NGCFLayer() for _ in range(args.gnn_layer)])
 
     def forward(self, adj, subseq_emb: Tensor, target_emb: Tensor):
         """Forward pass of the GCN model.
