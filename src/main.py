@@ -5,7 +5,7 @@ from typing import Union
 
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 
 from cprint import pprint_color
 from datasets import DS, TargetSubseqs, build_dataloader
@@ -96,7 +96,7 @@ def main() -> None:
         args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-latest.pt")
     else:
         do_train(trainer, valid_rating_matrix, test_rating_matrix)
-    do_eval(trainer, test_rating_matrix)
+    args.tb.close()
 
 
 def do_train(trainer, valid_rating_matrix, test_rating_matrix):
