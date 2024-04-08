@@ -111,7 +111,9 @@ class SASRecModel(nn.Module):
         super().__init__()
         # * args.item_size: max_item + 2, 0 for padding.
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
+        self.subseq_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
+        self.gcn_embeddings = None
         # self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
 
         self.adagrad_params = [self.item_embeddings.weight]
@@ -120,11 +122,12 @@ class SASRecModel(nn.Module):
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
+        self.gcn = GCN()
 
         self.criterion = nn.BCELoss(reduction="none")
         self.apply(self.init_weights)
 
-    def add_position_embedding(self, sequence: Tensor):
+    def add_position_embedding(self, sequence: Tensor, item_embeddings):
         """
 
         1. Transfer idx to embedding
@@ -138,11 +141,8 @@ class SASRecModel(nn.Module):
         Returns:
             Tensor: _description_
         """
-        seq_length: int = sequence.size(1)
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=sequence.device)
+        position_ids = torch.arange(sequence.size(1), dtype=torch.long, device=sequence.device)
         position_ids = position_ids.unsqueeze(0).expand_as(sequence)
-
-        item_embeddings = self.item_embeddings(sequence)
         position_embeddings = self.position_embeddings(position_ids)
         sequence_emb = item_embeddings + position_embeddings
         sequence_emb = self.LayerNorm(sequence_emb)
@@ -151,6 +151,35 @@ class SASRecModel(nn.Module):
         return sequence_emb
 
     # model same as SASRec
+    def forward(self, input_ids: Tensor, graph):
+        if args.gcn_mode in ["batch", "batch_gcn"]:
+            return self.forward_gcn(input_ids, graph)
+        extended_attention_mask = self.get_transformer_mask(input_ids)
+        item_embeddings = self.get_item_embeddings(input_ids)
+        sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
+        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
+
+        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
+        return item_encoded_layers[-1]
+
+    def forward_gcn(self, input_ids: Tensor, graph):
+        extended_attention_mask = self.get_transformer_mask(input_ids)
+        _, self.all_item_emb = self.gcn(graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight)
+        item_embeddings = self.all_item_emb[input_ids]
+        sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
+        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
+
+        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
+        return item_encoded_layers[-1]
+
+    def get_item_embeddings(self, input_ids: Tensor):
+        if args.gcn_mode != "None":
+            gcn_embeddings = self.gcn_embeddings(input_ids)
+            item_embeddings = self.item_embeddings(input_ids)
+            item_embeddings += gcn_embeddings
+        else:
+            item_embeddings = self.item_embeddings(input_ids)
+        return item_embeddings
     def get_transformer_mask(self, input_ids: Tensor):
         # * Shape: [batch_size, seq_length]
         attention_mask = (input_ids > 0).long()
