@@ -304,8 +304,7 @@ class Trainer:
             self.sim,
             target_item[:, -1],
         )
-        cicl_loss = nn.CrossEntropyLoss()(sem_nce_logits, sem_nce_labels)
-        return cicl_loss
+        return nn.CrossEntropyLoss()(sem_nce_logits, sem_nce_labels)
 
     def ficl_loss(self, subseq_pair: list[Tensor], clusters_t: list[KMeans]):
         """
@@ -363,8 +362,9 @@ class ICSRecTrainer(Trainer):
             with torch.no_grad():
                 self.cluster_epoch(cluster_dataloader)
 
-        if args.gcn_mode in ["mean"]:
-            self.gcn_epoch(cluster_dataloader)
+        if args.gcn_mode == "global":
+            with torch.no_grad():
+                self.gcn_epoch(cluster_dataloader)
 
         self.model.train()
         rec_avg_loss, joint_avg_loss, icl_losses = 0.0, 0.0, 0.0
