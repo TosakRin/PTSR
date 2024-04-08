@@ -61,6 +61,7 @@ def main() -> None:
     args.logger.info(" ".join(sys.argv))
     args.logger.info(args_info)
     args.tb = SummaryWriter(log_dir=tb_path)
+    write_cmd()
 
     valid_rating_matrix = get_rating_matrix(
         test_user_seq,
@@ -124,6 +125,12 @@ def do_eval(trainer, test_rating_matrix):
     args.rating_matrix = test_rating_matrix
     trainer.load(args.latest_path)
     scores, result_info = trainer.test(0, full_sort=True)
+
+
+def write_cmd():
+    with open("../cmd.sh", mode="a", encoding="utf-8") as f:
+        f.write(f"{args.save_name} | {' '.join(sys.argv)}\n")
+        f.write("\n")
 
 
 if __name__ == "__main__":
