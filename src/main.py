@@ -32,6 +32,11 @@ def main() -> None:
     pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
     args.data_file = f"{args.data_dir}{args.data_name}.txt"
     args.train_data_file = f"{args.data_dir}{args.data_name}_1.txt"
+    save_time = time.strftime("%m%d-%H%M%S")
+    args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
+    log_path = os.path.join(args.log_dir, args.save_name)
+    tb_path = os.path.join("runs", args.save_name)
+    args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
 
     # * construct supervisory signals via DS(·) operation
     if not os.path.exists(args.train_data_file):
@@ -50,6 +55,12 @@ def main() -> None:
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
     args.item_size = max_item + 2
     args.mask_id = max_item + 1
+    args_info = print_args_info(args)
+    args.logger = set_logger(name="exp_log", save_flag=True, save_path=log_path, save_type="file", train_flag=True)
+    args.logger.info(args.save_name)
+    args.logger.info(" ".join(sys.argv))
+    args.logger.info(args_info)
+    args.tb = SummaryWriter(log_dir=tb_path)
 
     valid_rating_matrix = get_rating_matrix(
         test_user_seq,
@@ -58,21 +69,6 @@ def main() -> None:
         "valid",
     )
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
-
-    args_info = print_args_info(args)
-    save_time = time.strftime("%m%d-%H%M%S")
-    args.save_name = f"{save_time}-{args.model_name}-{args.data_name}-{args.msg}"
-    args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
-    log_path = os.path.join(args.log_dir, args.save_name)
-    args.logger = set_logger(name="exp_log", save_flag=True, save_path=log_path, save_type="file", train_flag=True)
-    args.logger.info(args.save_name)
-    args.logger.info(" ".join(sys.argv))
-    args.logger.info(args_info)
-    tb_path = os.path.join("runs", args.save_name)
-    args.tb = SummaryWriter(log_dir=tb_path)
-
-    checkpoint = f"{args.save_name}.pt"
-    args.checkpoint_path = os.path.join(args.output_dir, checkpoint)
 
     # * set item score in train set to `0` in validation
     args.rating_matrix = valid_rating_matrix

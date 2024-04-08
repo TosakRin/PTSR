@@ -106,7 +106,7 @@ class Trainer:
                 "NDCG@10": 0.0,
                 "HIT@20": 0.0,
                 "NDCG@20": 0.0,
-            }
+            },
         }
 
         pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
@@ -357,6 +357,17 @@ class Trainer:
 
         return ficl_loss
 
+    def icsrec_loss(self, subsequence_1, subsequence_2, target_pos_1):
+        # * intent representation learning task\
+        cicl_loss, ficl_loss = 0.0, 0.0
+        coarse_intent_1, coarse_intent_2 = self.model(subsequence_1), self.model(subsequence_2)
+        subseq_pair = [coarse_intent_1, coarse_intent_2]
+        if "c" in args.cl_mode:
+            cicl_loss = self.cicl_loss(subseq_pair, target_pos_1)
+        if "f" in args.cl_mode:
+            ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
+        return cicl_loss, ficl_loss
+
 
 class ICSRecTrainer(Trainer):
 
@@ -370,9 +381,7 @@ class ICSRecTrainer(Trainer):
             self.gcn_epoch(cluster_dataloader)
 
         self.model.train()
-        rec_avg_loss = 0.0
-        joint_avg_loss = 0.0
-        icl_losses = 0.0
+        rec_avg_loss, joint_avg_loss, icl_losses = 0.0, 0.0, 0.0
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
@@ -392,28 +401,18 @@ class ICSRecTrainer(Trainer):
             logits = self.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
-            # * intent representation learning task
-            coarse_intent_1 = self.model(subsequence_1)
-            coarse_intent_2 = self.model(subsequence_2)
-            # coarse_intent = self.model(torch.cat([subsequence_1, subsequence_2], dim=0))
-            # coarse_intent_1, coarse_intent_2 = coarse_intent.chunk(2, dim=0)
-            subseq_pair = [coarse_intent_1, coarse_intent_2]
+            cicl_loss, ficl_loss = (
+                self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
+                if args.cl_mode in ["c", "f", "cf"]
+                else 0.0
+            ), 0.0
 
-            if args.cl_mode in ["c", "cf"]:
-                cicl_loss = self.cicl_loss(subseq_pair, target_pos_1)
-            else:
-                cicl_loss = 0.0
-            if args.cl_mode in ["f", "cf"]:
-                ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
-            else:
-                ficl_loss = 0.0
             icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
             joint_loss = args.rec_weight * rec_loss + icl_loss
 
             # self.optim_adagrad.zero_grad()
             self.optim_adam.zero_grad()
             joint_loss.backward()
-
             # self.optim_adagrad.step()
             self.optim_adam.step()
 
@@ -445,16 +444,6 @@ class ICSRecTrainer(Trainer):
         for key, value in post_fix.items():
             if "loss" in key:
                 args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
-
-        # args.tb.add_scalars(
-        #     "Loss",
-        #     {
-        #         "rec_avg_loss": rec_avg_loss / batch_num,
-        #         "icl_avg_loss": icl_losses / batch_num,
-        #         "joint_avg_loss": joint_avg_loss / batch_num,
-        #     },
-        #     epoch,
-        # )
 
         if (epoch + 1) % args.log_freq == 0:
             # pprint_color(str(post_fix))
