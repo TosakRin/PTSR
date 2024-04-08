@@ -589,10 +589,11 @@ class ICSRecTrainer(Trainer):
         ):
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
             subseq_id, _, subsequence, _, _, _ = rec_batch
-            pad_mask = (subsequence > 0).float()    # [batch_size, seq_len]
-            subseq_emb = self.model.item_embeddings(subsequence) # [batch_size, seq_len, hidden_size]
-            num_non_pad = pad_mask.sum(dim=1, keepdim=True) # [batch_size, 1]
-            weighted_emb  = subseq_emb * pad_mask.unsqueeze(-1) # [batch_size, seq_len, hidden_size]
+            # * subseq_emb: mean pooling of items in subsequence, ignore the padding item.
+            pad_mask = (subsequence > 0).float()  # [batch_size, seq_len]
+            subseq_emb = self.model.item_embeddings(subsequence)  # [batch_size, seq_len, hidden_size]
+            num_non_pad = pad_mask.sum(dim=1, keepdim=True)  # [batch_size, 1]
+            weighted_emb = subseq_emb * pad_mask.unsqueeze(-1)  # [batch_size, seq_len, hidden_size]
             subseq_emb_avg = weighted_emb.sum(dim=1) / num_non_pad  # [batch_size, hidden_size]
             for i in range(subseq_id.shape[0]):
                 subseq_embedding_dict.setdefault(subseq_id[i].item(), subseq_emb_avg[i])
@@ -601,4 +602,7 @@ class ICSRecTrainer(Trainer):
         subseq_emb = nn.Parameter(torch.stack(subseq_emb_list)).to(self.device)
         item_emb = nn.Parameter(self.model.item_embeddings.weight).to(self.device)
         gcn_subseq_emb, gcn_item_emb = self.gcn(self.graph.torch_A, subseq_emb, item_emb)
-        self.model.item_embeddings = nn.Embedding.from_pretrained(gcn_item_emb)
+
+        # self.model.item_embeddings = nn.Embedding.from_pretrained(gcn_item_emb)
+        # self.model.item_embeddings.weight.data.copy_(gcn_item_emb.detach())
+        self.model.gcn_embeddings = nn.Embedding.from_pretrained(gcn_item_emb)
