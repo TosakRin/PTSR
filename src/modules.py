@@ -264,8 +264,12 @@ class NGCFLayer(nn.Module):
 
     def __init__(self, in_features=args.hidden_size, out_features=args.hidden_size):
         super().__init__()
+        self.dropout = nn.Dropout(args.gcn_dropout_prob)
         self.linear = nn.Linear(in_features, out_features, bias=False)
 
     def forward(self, adj, embeds):
         embeds = self.linear(embeds)
-        return F.relu(torch.spmm(adj, embeds))
+        embeds = self.dropout(embeds)
+        return F.gelu(torch.spmm(adj, embeds))
+
+
