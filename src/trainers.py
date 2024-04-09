@@ -466,18 +466,7 @@ class ICSRecTrainer(Trainer):
             seq_output_last_item = seq_output_last_item.detach().cpu().numpy()
             kmeans_training_data.append(seq_output_last_item)
 
-            # for i in range(subseq_id.shape[0]):
-            #     subseq_embedding_dict.setdefault(subseq_id[i].item(), seq_output_last_item[i])
-
-        subseq_emb_list = list(subseq_embedding_dict.values())
-        # self.model.subseqs_embeddings = nn.Embedding.from_pretrained(torch.Tensor(subseq_emb_list))
-        # subseq_emb = nn.Parameter(self.model.subseqs_embeddings.weight).to(self.device)
-        # item_emb = nn.Parameter(self.model.item_embeddings.weight).to(self.device)
-        # gcn_subseq_emb, gcn_item_emb = self.gcn(self.graph.torch_A, subseq_emb, item_emb)
-        # self.model.item_embeddings = nn.Embedding.from_pretrained(gcn_item_emb)
-
         # * SHAPE: [SubSeq_num, Hidden_size] -> [131413, 64]
-        # kmeans_training_data = [gcn_subseq_emb.detach().cpu().numpy()]
         kmeans_training_data = np.concatenate(kmeans_training_data, axis=0)
         kmeans_training_data_t = [kmeans_training_data]
 
