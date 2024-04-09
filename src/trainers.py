@@ -387,11 +387,9 @@ class ICSRecTrainer(Trainer):
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
-            cicl_loss, ficl_loss = (
-                self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
-                if args.cl_mode in ["c", "f", "cf"]
-                else 0.0
-            ), 0.0
+            cicl_loss, ficl_loss = 0.0, 0.0
+            if args.cl_mode in ["c", "f", "cf"]:
+                cicl_loss, ficl_loss = self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
 
             icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
             joint_loss = args.rec_weight * rec_loss + icl_loss
