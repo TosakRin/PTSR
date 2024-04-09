@@ -287,9 +287,7 @@ def get_scheduler(optimizer):
             if epoch <= args.warm_up_epochs
             else 0.5 * (math.cos((epoch - args.warm_up_epochs) / (args.epochs - args.warm_up_epochs) * math.pi) + 1)
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=args.T_0, T_mult=args.T_mult, eta_min=args.min_lr
-        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warm_up_with_cosine_lr)
     elif args.scheduler == "warmup+multistep":
         warm_up_with_multistep_lr = lambda epoch: (
             epoch / args.warm_up_epochs
