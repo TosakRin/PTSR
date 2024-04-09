@@ -6,4 +6,6 @@ pygments
 types-Pygments
 termcolor
 colorlog
-
+rich
+tensorboard
+torch-tb-profiler

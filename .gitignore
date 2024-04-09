@@ -179,4 +179,9 @@ src/__pycache__/*
 tmp.py
 proxy.sh
 *.ipynb
-
+*.pkl
+*.txt
+AdaGCL/*
+src/runs/*
+runs/*
+cmd.sh
