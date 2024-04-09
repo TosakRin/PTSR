@@ -18,7 +18,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     # * system args
     parser.add_argument("--data_dir", default="../data/", type=str)
-    parser.add_argument("--output_dir", default="output", type=str)
+    parser.add_argument("--output_dir", default="ckpt", type=str)
+    parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--data_name", default="Sports_and_Outdoors", type=str)
     parser.add_argument("--encoder", default="SAS", type=str)  # * {"SAS":SASRec,"GRU":GRU4Rec}
     parser.add_argument("--do_eval", action="store_true")
@@ -52,9 +53,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_seq_length", default=50, type=int)
 
     # * train args
-    parser.add_argument("--lr", type=float, default=0.001, help="learning rate of adam")
+    parser.add_argument("--lr_adam", type=float, default=0.001, help="learning rate of adam")
+    parser.add_argument("--lr_adagrad", type=float, default=0.01, help="learning rate of adagrad")
+
     parser.add_argument("--batch_size", type=int, default=256, help="number of batch_size")
-    parser.add_argument("--epochs", type=int, default=300, help="number of epochs")
+    parser.add_argument("--epochs", type=int, default=500, help="number of epochs")
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--log_freq", type=int, default=1, help="per epoch print res")
     parser.add_argument("--seed", default=2022, type=int)
@@ -66,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--beta_0", type=float, default=0.1, help="weight of fine-grain contrastive learning task")
 
     # * ablation experiments
-    parser.add_argument("--cl_mode", type=str, default="cf", help="contrastive mode")
+    parser.add_argument("--cl_mode", type=str, default="", help="contrastive mode")
     # * {'cf':coarse-grain+fine-grain,'c':only coarse-grain,'f':only fine-grain}
     parser.add_argument(
         "--f_neg", action="store_true", help="delete the FNM (False Negative Mining) component (both in cicl and ficl)"
@@ -78,15 +81,28 @@ def parse_args() -> argparse.Namespace:
     # * GNN
     parser.add_argument("--gnn_layer", default=2, type=int, help="number of gnn layers")
 
+    parser.add_argument("--warm_up_epochs", default=5, type=int, help="epoch number of warm up")
+    parser.add_argument("--latest_path", default="output/ICSRec-SAS-Beauty-latest.pt", type=str)
+    parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--msg", type=str, default="", required=True)
+    parser.add_argument("--precision", choices=["highest", "high", "medium"], default="highest")
+    parser.add_argument(
+        "--gcn_mode", type=str, default="None", help="gcn mode", choices=["None", "global", "batch", "batch_gcn"]
+    )
+    parser.add_argument("--do_test", action="store_true")
+    parser.add_argument("--scheduler", default="None", type=str, help="scheduler")
+    parser.add_argument("--milestones", nargs="?", default="[50,75,100]", help="milestones for MultiStepLR")
+    parser.add_argument("--gamma", default=0.1, type=float, help="gamma for MultiStepLR")
+    parser.add_argument("--batch_loss", action="store_true", help="Tensorboard record batch loss")
     return parser.parse_args()
 
 
 def print_args_info(args) -> None:
     """print the args info"""
     pprint_color("-------------------- Configure Info: -------------------- ")
-    for arg in vars(args):
-        pprint_color(f"{arg:<30} : {getattr(args, arg):>35}")
+    args_info = "".join(f"{arg:<30} : {getattr(args, arg):>35}\n" for arg in sorted(vars(args)))
     print_color("---------------------------------------------------------- ")
+    return args_info
 
 
 args: argparse.Namespace = parse_args()
