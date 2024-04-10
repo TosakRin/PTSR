@@ -257,32 +257,32 @@ class LigthGCNLayer(nn.Module):
         super().__init__()
 
     def forward(self, adj, embeds):
-        return torch.spmm(adj, embeds)
+        return torch.sparse.mm(adj, embeds)
 
 
 class NGCFLayer(nn.Module):
 
     def __init__(self, in_features=args.hidden_size, out_features=args.hidden_size):
         super().__init__()
-        self.dropout = nn.Dropout(args.gcn_dropout_prob)
+        # self.dropout = nn.Dropout(args.gcn_dropout_prob)
         self.linear = nn.Linear(in_features, out_features, bias=False)
 
     def forward(self, adj, embeds):
         embeds = self.linear(embeds)
-        embeds = self.dropout(embeds)
-        return F.gelu(torch.spmm(adj, embeds))
+        # embeds = self.dropout(embeds)
+        return F.leaky_relu(torch.sparse.mm(adj, embeds), negative_slope=0.2)
 
 
 class GATLayer(nn.Module):
     """
-        这个GATLayer实现包括以下关键步骤：
+    这个GATLayer实现包括以下关键步骤：
 
-        - 线性变换：首先对每个节点的特征应用一个线性变换（通过权重矩阵W）。
-        - 注意力机制：然后，计算节点对之间的注意力系数。这是通过首先计算一个得分（使用参数a），然后应用LeakyReLU非线性激活函数来完成的。注意力系数是通过对这些得分应用softmax函数来归一化的，确保每个节点的邻居的注意力系数之和为1。
-        - 特征更新：最后，使用注意力系数加权邻居节点的特征，来更新每个节点的特征。
+    - 线性变换：首先对每个节点的特征应用一个线性变换（通过权重矩阵W）。
+    - 注意力机制：然后，计算节点对之间的注意力系数。这是通过首先计算一个得分（使用参数a），然后应用LeakyReLU非线性激活函数来完成的。注意力系数是通过对这些得分应用softmax函数来归一化的，确保每个节点的邻居的注意力系数之和为1。
+    - 特征更新：最后，使用注意力系数加权邻居节点的特征，来更新每个节点的特征。
 
-        Args:
-            nn (_type_): _description_
+    Args:
+        nn (_type_): _description_
     """
 
     def __init__(self, in_features, out_features, dropout_rate=0.6, alpha=0.2):
