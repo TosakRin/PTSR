@@ -39,6 +39,7 @@ class TargetSubseqs:
         """
         self.subseqs_path = f"{data_dir}/{data_name}_1.txt"
         self.target_subseqs_path = f"{save_path}/{data_name}_1_t.pkl"
+        self.subseqs_target_path = f"{save_path}/{data_name}_1_s.pkl"
 
     def generate_target_subseqs_dict(self) -> None:
         """Generate the target item for each subsequence, and save to pkl file."""
@@ -71,6 +72,49 @@ class TargetSubseqs:
         pprint_color(f'>>> Saving target-item specific subsequence set to "{self.target_subseqs_path}"')
         with open(self.target_subseqs_path, "wb") as fw:
             pickle.dump(total_dic, fw)
+
+    def generate_subseqs_target_dict(self):
+        """subseqs_target_dict: dict[str, dict[tuple[int], list[int]]].
+
+        * Remember:
+
+        - subseqs_target_dict: the subseq (aka, key) is the real subsequence.
+        - target_subseqs_dict: the subseq[1:] (aka, value) is the real subsequence. The subseq[0] is User_ID.
+        """
+        # * data_f is the subsequences file
+        train_dict: dict[tuple[int], list[int]] = {}
+        valid_dict: dict[tuple[int], list[int]] = {}
+        test_dict: dict[tuple[int], list[int]] = {}
+        with open(self.subseqs_path, "r", encoding="utf-8") as fr:
+            subseq_list: list[str] = fr.readlines()
+            for subseq in subseq_list:
+                items: list[str] = subseq.split(" ")
+                target_train = int(items[-3])
+                target_valid = int(items[-2])
+                target_test = int(items[-1])
+                # * items[0] is User ID
+                subseq_train: tuple[int] = tuple(map(int, items[1:-3]))
+                subseq_valid: tuple[int] = tuple(map(int, items[1:-2]))
+                subseq_test: tuple[int] = tuple(map(int, items[1:-1]))
+                if subseq_train not in train_dict:
+                    train_dict.setdefault(subseq_train, [])
+                train_dict[subseq_train].append(target_train)
+                if subseq_valid not in valid_dict:
+                    valid_dict.setdefault(subseq_valid, [])
+                valid_dict[subseq_valid].append(target_valid)
+                if subseq_test not in test_dict:
+                    test_dict.setdefault(subseq_test, [])
+                test_dict[subseq_test].append(target_test)
+
+        total_dic: dict[str, dict[tuple[int], list[int]]] = {
+            "train": train_dict,
+            "valid": valid_dict,
+            "test": test_dict,
+        }
+        pprint_color(f'>>> Saving subsequence specific target-item set to "{self.subseqs_target_path}"')
+        with open(self.subseqs_target_path, "wb") as f:
+            pickle.dump(total_dic, f)
+        return total_dic
 
     def _load_target_subseqs_dict(self, target_subseqs_path: str, mode="train"):
         """get the prefix subsequence set (dict).
