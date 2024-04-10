@@ -83,6 +83,7 @@ class Trainer:
 
         graph_path = f"{args.data_dir}/{args.data_name}_graph.pkl"
         self.graph = Graph(graph_path)
+        self.model.graph = self.graph
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
@@ -434,7 +435,7 @@ class ICSRecTrainer(Trainer):
             _, _, subsequence_1, target_pos_1, subsequence_2, _ = rec_batch
 
             # * prediction task
-            intent_output = self.model(subsequence_1, self.graph)
+            intent_output = self.model(subsequence_1)
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
@@ -544,7 +545,7 @@ class ICSRecTrainer(Trainer):
                 batch = tuple(t.to(self.device) for t in batch)
                 user_ids, input_ids, _, answers = batch
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-                recommend_output: Tensor = self.model(input_ids, self.graph)  # [BxLxH]
+                recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]
                 recommend_output = recommend_output[:, -1, :]  # [BxH]
 

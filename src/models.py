@@ -151,9 +151,9 @@ class SASRecModel(nn.Module):
         return sequence_emb
 
     # model same as SASRec
-    def forward(self, input_ids: Tensor, graph):
+    def forward(self, input_ids: Tensor):
         if args.gcn_mode in ["batch", "batch_gcn"]:
-            return self.forward_gcn(input_ids, graph)
+            return self.forward_gcn(input_ids)
         extended_attention_mask = self.get_transformer_mask(input_ids)
         item_embeddings = self.get_item_embeddings(input_ids)
         sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
@@ -162,9 +162,9 @@ class SASRecModel(nn.Module):
         # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
         return item_encoded_layers[-1]
 
-    def forward_gcn(self, input_ids: Tensor, graph):
+    def forward_gcn(self, input_ids: Tensor):
         extended_attention_mask = self.get_transformer_mask(input_ids)
-        _, self.all_item_emb = self.gcn(graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight)
+        _, self.all_item_emb = self.gcn(self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight)
         item_embeddings = self.all_item_emb[input_ids]
         sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
         item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
