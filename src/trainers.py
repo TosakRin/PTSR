@@ -352,6 +352,24 @@ class Trainer:
             ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
         return cicl_loss, ficl_loss
 
+    def subseq_embed_init(self, gcn_dataloader):
+        for _, (rec_batch) in tqdm(
+            enumerate(gcn_dataloader),
+            total=len(gcn_dataloader),
+            desc=f"{args.save_name} | Device: {args.gpu_id} | subseq_embed_init",
+            leave=False,
+            dynamic_ncols=True,
+        ):
+            rec_batch = tuple(t.to(self.device) for t in rec_batch)
+            subseq_id, _, subsequence, _, _, _ = rec_batch
+            # * subseq_emb: mean pooling of items in subsequence, ignore the padding item.
+            pad_mask = (subsequence > 0).float()  # [batch_size, seq_len]
+            subseq_emb = self.model.item_embeddings(subsequence)  # [batch_size, seq_len, hidden_size]
+            num_non_pad = pad_mask.sum(dim=1, keepdim=True)  # [batch_size, 1]
+            weighted_emb = subseq_emb * pad_mask.unsqueeze(-1)  # [batch_size, seq_len, hidden_size]
+            subseq_emb_avg = weighted_emb.sum(dim=1) / num_non_pad  # [batch_size, hidden_size]
+            self.model.subseq_embeddings.weight.data[subseq_id] = subseq_emb_avg
+
     @staticmethod
     def get_scheduler(optimizer):
         if args.scheduler == "step":
@@ -403,6 +421,7 @@ class ICSRecTrainer(Trainer):
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
+        self.subseq_embed_init(self.cluster_dataloader)
         for batch_i, (rec_batch) in tqdm(
             enumerate(train_dataloader),
             total=batch_num,
