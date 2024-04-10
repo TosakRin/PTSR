@@ -20,6 +20,7 @@
 
 import gc
 import warnings
+from ast import literal_eval
 from collections import OrderedDict
 from typing import Optional, Union
 
@@ -351,6 +352,7 @@ class Trainer:
             ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
         return cicl_loss, ficl_loss
 
+    @staticmethod
     def get_scheduler(optimizer):
         if args.scheduler == "step":
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
