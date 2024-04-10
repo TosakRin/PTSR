@@ -37,7 +37,6 @@ from graph import Graph
 from metric import get_metric, ndcg_k, recall_at_k
 from models import GCN, GRUEncoder, KMeans, SASRecModel
 from param import args
-from utils import get_scheduler
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -86,7 +85,7 @@ class Trainer:
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
-        self.scheduler = get_scheduler(self.optim_adam)
+        self.scheduler = self.get_scheduler(self.optim_adam)
 
         self.best_scores = {
             "valid": {
@@ -284,7 +283,6 @@ class Trainer:
         logits = torch.cat((positive_samples, negative_samples), dim=1)
         return logits, labels
 
-
     def cicl_loss(self, coarse_intents: list[Tensor], target_item):
         """Coarse Intents: make 2 subsequence with the same target item closer by infoNCE.
 
@@ -352,6 +350,38 @@ class Trainer:
         if "f" in args.cl_mode:
             ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
         return cicl_loss, ficl_loss
+
+    def get_scheduler(optimizer):
+        if args.scheduler == "step":
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+        elif args.scheduler == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.T_max, eta_min=args.min_lr)
+        elif args.scheduler == "plateau":
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=args.factor, patience=args.patience, verbose=True
+            )
+        elif args.scheduler == "multistep":
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                optimizer, milestones=literal_eval(args.milestones), gamma=args.gamma
+            )
+            pprint_color(f">>> scheduler: {args.scheduler}, milestones: {args.milestones}, gamma: {args.gamma}")
+        elif args.scheduler == "warmup+cosine":
+            warm_up_with_cosine_lr = lambda epoch: (
+                epoch / args.warm_up_epochs
+                if epoch <= args.warm_up_epochs
+                else 0.5 * (math.cos((epoch - args.warm_up_epochs) / (args.epochs - args.warm_up_epochs) * math.pi) + 1)
+            )
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warm_up_with_cosine_lr)
+        elif args.scheduler == "warmup+multistep":
+            warm_up_with_multistep_lr = lambda epoch: (
+                epoch / args.warm_up_epochs
+                if epoch <= args.warm_up_epochs
+                else args.gamma ** len([m for m in literal_eval(args.milestones) if m <= epoch])
+            )
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warm_up_with_multistep_lr)
+        else:
+            raise ValueError("Invalid scheduler")
+        return scheduler
 
 
 class ICSRecTrainer(Trainer):
