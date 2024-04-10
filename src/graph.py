@@ -316,9 +316,7 @@ class Graph:
             train_matrix = (pickle.load(fs) != 0).astype(np.float32)
         if not isinstance(train_matrix, coo_matrix):
             train_matrix = sp.coo_matrix(train_matrix)
-
         self.train_matrix = train_matrix
-        args.user, args.item = train_matrix.shape
         self.torch_A = self.get_torch_adj(train_matrix)
 
     @staticmethod
@@ -374,9 +372,8 @@ class Graph:
         pprint_color(f"==>> graph.max(): {graph.max()}")
         pprint_color(f"==>> graph.min(): {graph.min()}")
         pprint_color(f"==>> graph.sum(): {graph.sum()}")
-        pprint_color(f"==>> graph.data.shape: {graph.data.shape}")
-        pprint_color(f"==>> graph.row.shape: {graph.row.shape}")
-        pprint_color(f"==>> graph.col.shape: {graph.col.shape}")
+        pprint_color(f"有相同 Target Item 的 Subseq 数: {np.sum(graph.tocsr().sum(axis=1)>1)}")
+        pprint_color(f"有相同 Subseq 的 Target Item 数: {np.sum(graph.tocsc().sum(axis=0)>1)}")
 
     @staticmethod
     def save_sparse_matrix(save_path, graph):
