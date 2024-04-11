@@ -18,8 +18,8 @@
 #
 
 
-import copy
 import gc
+import math
 import time
 import warnings
 from ast import literal_eval
@@ -37,11 +37,39 @@ from tqdm.rich import tqdm
 
 from cprint import pprint_color
 from graph import Graph
+from loss import cicl_loss, ficl_loss
 from metric import get_metric, ndcg_k, recall_at_k
 from models import GCN, GRUEncoder, KMeans, SASRecModel
 from param import args
+from utils import EarlyStopping
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+
+
+def do_train(trainer, valid_rating_matrix, test_rating_matrix):
+    pprint_color(">>> Train ICSRec Start")
+    early_stopping = EarlyStopping(args.checkpoint_path, args.latest_path, patience=50)
+    for epoch in range(args.epochs):
+        args.rating_matrix = valid_rating_matrix
+        trainer.train(epoch)
+        # * evaluate on NDCG@20
+        scores, _ = trainer.valid(epoch, full_sort=True)
+        early_stopping(np.array(scores[-1:]), trainer.model)
+        # * test on while training
+        if args.do_test:
+            args.rating_matrix = test_rating_matrix
+            _, _ = trainer.test(epoch, full_sort=True)
+        if early_stopping.early_stop:
+            pprint_color(">>> Early stopping")
+            break
+
+
+def do_eval(trainer, test_rating_matrix):
+    pprint_color(">>> Test ICSRec Start")
+    pprint_color(f'>>> Load model from "{args.latest_path}" for test')
+    args.rating_matrix = test_rating_matrix
+    trainer.load(args.latest_path)
+    _, _ = trainer.test(0, full_sort=True)
 
 
 class Trainer:
@@ -64,32 +92,34 @@ class Trainer:
         self.gcn = GCN()
         if cuda_condition:
             self.model.cuda()
-
-        self.batch_size: int = args.batch_size
-        self.sim: str = args.sim  # * the calculate ways of the similarity.
-
-        cluster = KMeans(
-            num_cluster=args.intent_num,
-            seed=1,
-            hidden_size=64,
-            gpu_id=args.gpu_id,
-            device=self.device,
-        )
-        self.clusters: list[KMeans] = [cluster]
-        self.clusters_t: list[list[KMeans]] = [self.clusters]
-
-        self.train_dataloader = train_dataloader
-        self.cluster_dataloader = cluster_dataloader
-        self.eval_dataloader = eval_dataloader
-        self.test_dataloader = test_dataloader
-
+            self.gcn.cuda()
         graph_path = f"{args.data_dir}/{args.data_name}_graph.pkl"
         self.graph = Graph(graph_path)
         self.model.graph = self.graph
+        if "f" in args.cl_mode:
+            cluster = KMeans(
+                num_cluster=args.intent_num,
+                seed=1,
+                hidden_size=64,
+                gpu_id=args.gpu_id,
+                device=self.device,
+            )
+            self.clusters: list[KMeans] = [cluster]
+            self.clusters_t: list[list[KMeans]] = [self.clusters]
+
+        self.train_dataloader, self.cluster_dataloader, self.eval_dataloader, self.test_dataloader = (
+            train_dataloader,
+            cluster_dataloader,
+            eval_dataloader,
+            test_dataloader,
+        )
+
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
+
+        # * prepare padding subseq for subseq embedding update
         self.all_subseq_id, self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
 
         self.best_scores = {
@@ -113,28 +143,7 @@ class Trainer:
             },
         }
 
-        pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
-
-    # * Sample-based. NO USE in the paper
-    def get_sample_scores(self, epoch: int, pred_list):
-        pred_list = (-pred_list).argsort().argsort()[:, 0]
-        HIT_1, NDCG_1, MRR = get_metric(pred_list, 1)
-        HIT_5, NDCG_5, MRR = get_metric(pred_list, 5)
-        HIT_10, NDCG_10, MRR = get_metric(pred_list, 10)
-
-        post_fix = {
-            "Epoch": epoch,
-            "HIT@1": round(HIT_1, 4),
-            "NDCG@1": round(NDCG_1, 4),
-            "HIT@5": round(HIT_5, 4),
-            "NDCG@5": round(NDCG_5, 4),
-            "HIT@10": round(HIT_10, 4),
-            "NDCG@10": round(NDCG_10, 4),
-            "MRR": round(MRR, 4),
-        }
-        pprint_color(post_fix)
-        args.logger.info(str(post_fix))
-        return [HIT_1, NDCG_1, HIT_5, NDCG_5, HIT_10, NDCG_10, MRR], str(post_fix)
+        # pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
     def get_full_sort_score(
         self, epoch: int, answers: np.ndarray, pred_list: np.ndarray, mode
@@ -197,164 +206,16 @@ class Trainer:
         """Load the model from the file_name"""
         self.model.load_state_dict(torch.load(file_name))
 
-    def mask_correlated_samples(self, batch_size: int):
-        N = 2 * batch_size
-        mask = torch.ones((N, N), dtype=torch.bool)
-        mask = mask.fill_diagonal_(0)
-        for i in range(batch_size):
-            mask[i, batch_size + i] = 0
-            mask[batch_size + i, i] = 0
-        return mask
-
-    # * False Negative Mask
-    def mask_correlated_samples_(self, label: Tensor):
-        """
-        Judge if other subsequence (except our subsequence pair) in the same batch has the same target item. Mask them on a subseq-subseq matrix and true the masked position matrix.
-
-        basic example: the index 1 and index 3 has the same target item. So mask the position (1, 3) and (3, 1) to 0.
-
-        ```python
-        >>> import torch
-        >>> torch.eq(torch.Tensor([1,2,3,2]), torch.Tensor([[1],[2],[3],[2]]))
-        tensor([[ True, False, False, False],
-                [False,  True, False,  True],
-                [False, False,  True, False],
-                [False,  True, False,  True]])
-        ```
-
-
-        Args:
-            label (Tensor): The label tensor of shape [1, batch_size].
-
-        Returns:
-            Tensor: The mask tensor of shape [2*batch_size, 2*batch_size], where correlated samples are masked with 0.
-
-        """
-        # * SHAPE: [1, batch_size] -> [2, batch_size] -> [1, 2*batch_size] -> [2*batch_size, 1]
-        label = label.view(1, -1)
-        label = label.expand((2, label.shape[-1])).reshape(1, -1)
-        label = label.contiguous().view(-1, 1)
-
-        # * label: two subsequences' target item. label[0, batch_size] is the target item of the first subsequence. label[1, batch_size] is the target item of the second subsequence.
-        # * SHAPE: [2*batch_size, 2*batch_size]
-        mask = torch.eq(label, label.t())
-        return mask == 0
-
-    def info_nce(self, z_i: Tensor, z_j: Tensor, temp: float, batch_size: int, sim_way: str = "dot", intent_id=None):
-        """
-        Calculates the InfoNCE loss for positive and negative pairs.
-
-        We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
-
-        Args:
-            z_i (Tensor): The embeddings of the first item in the positive pair. SHAPE: [batch_size, hidden_size]
-            z_j (Tensor): The embeddings of the second item in the positive pair. SHAPE: [batch_size, hidden_size]
-            temp (float): The temperature parameter for scaling the similarity scores.
-            batch_size (int): The size of the batch.
-            sim_way (str, optional): The similarity calculation method. Can be "dot" or "cos". Defaults to "dot".
-            intent_id (optional): The intent ID for masking correlated samples. Defaults to None.
-
-        Returns:
-            Tuple[Tensor, Tensor]: The logits [batch_size*2, batch_size*2 + 1] and labels [batch_size*2] for the InfoNCE loss.
-        """
-        N = 2 * batch_size
-        z = torch.cat((z_i, z_j), dim=0)  # * SHAPE: [batch_size*2, hidden_size]
-        if sim_way == "cos":
-            sim = F.cosine_similarity(z.unsqueeze(1), z.unsqueeze(0), dim=2) / temp
-        elif sim_way == "dot":
-            sim = torch.mm(z, z.t()) / temp
-
-        # * torch.diag: Returns the elements from the diagonal of a matrix. SHAPE: [batch_size]
-        # * Positive: (0, 256), (1, 257) ... (255, 511) and (256, 0), (257, 1) ... (511, 255)
-        sim_i_j = torch.diag(sim, batch_size)
-        sim_j_i = torch.diag(sim, -batch_size)
-
-        # * SHAPE: [batch_size*2, 1]
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
-
-        if args.f_neg:
-            mask = self.mask_correlated_samples_(intent_id)
-            # * SHAPE: [batch_size*2, batch_size*2]
-            negative_samples = sim
-            negative_samples[mask == 0] = float("-inf")
-        else:
-            mask = self.mask_correlated_samples(batch_size)
-            negative_samples = sim[mask].reshape(N, -1)
-
-        # * SHAPE: [batch_size*2]
-        labels = torch.zeros(N).to(positive_samples.device).long()
-        # * SHAPE: [batch_size*2, batch_size*2 + 1]
-        logits = torch.cat((positive_samples, negative_samples), dim=1)
-        return logits, labels
-
-    def cicl_loss(self, coarse_intents: list[Tensor], target_item):
-        """Coarse Intents: make 2 subsequence with the same target item closer by infoNCE.
-
-        Args:
-            coarse_intents (list[Tensor]): A list of coarse intents. Tensor SHAPE: [batch_size, seq_len, hidden_size]
-            target_item (Tensor): The target item.
-
-        Returns:
-            Tensor: The calculated contrastive loss.
-        """
-        coarse_intent_1, coarse_intent_2 = coarse_intents[0], coarse_intents[1]
-        sem_nce_logits, sem_nce_labels = self.info_nce(
-            coarse_intent_1[:, -1, :],
-            coarse_intent_2[:, -1, :],
-            args.temperature,
-            coarse_intent_1.shape[0],
-            self.sim,
-            target_item[:, -1],
-        )
-        return nn.CrossEntropyLoss()(sem_nce_logits, sem_nce_labels)
-
-    def ficl_loss(self, subseq_pair: list[Tensor], clusters_t: list[KMeans]):
-        """
-        Calculates the FICL (Federated InfoNCE Contrastive Learning) loss.
-
-        Args:
-            sequences (list[Tensor]): subsequence pair with the same target item. subseq SHAPE: [batch_size, seq_len, hidden_size]
-            clusters_t (list[KMeans]): A list of clusters.
-
-        Returns:
-            torch.Tensor: The FICL loss.
-
-        """
-        for i, subseq in enumerate(subseq_pair):
-            coarse_intent = subseq[:, -1, :]
-            intent_n = coarse_intent.view(-1, coarse_intent.shape[-1])
-            intent_n = intent_n.detach().cpu().numpy()
-            intent_id, fined_intent = clusters_t[0].query(intent_n)
-
-            fined_intent = fined_intent.view(fined_intent.shape[0], -1)
-            a, b = self.info_nce(
-                coarse_intent.view(coarse_intent.shape[0], -1),
-                fined_intent,
-                args.temperature,
-                coarse_intent.shape[0],
-                sim_way=self.sim,
-                intent_id=intent_id,
-            )
-            loss_n = nn.CrossEntropyLoss()(a, b)
-
-            if i == 0:
-                ficl_loss = loss_n
-            else:
-                ficl_loss += loss_n
-
-        return ficl_loss
-
     def icsrec_loss(self, subsequence_1, subsequence_2, target_pos_1):
         # * intent representation learning task\
-        cicl_loss, ficl_loss = 0.0, 0.0
+        cicl, ficl = 0.0, 0.0
         coarse_intent_1, coarse_intent_2 = self.model(subsequence_1), self.model(subsequence_2)
         subseq_pair = [coarse_intent_1, coarse_intent_2]
         if "c" in args.cl_mode:
-            cicl_loss = self.cicl_loss(subseq_pair, target_pos_1)
+            cicl = cicl_loss(subseq_pair, target_pos_1)
         if "f" in args.cl_mode:
-            ficl_loss = self.ficl_loss(subseq_pair, self.clusters_t[0])
-        return cicl_loss, ficl_loss
+            ficl = ficl_loss(subseq_pair, self.clusters_t[0])
+        return cicl, ficl
 
     @staticmethod
     def get_scheduler(optimizer):
@@ -392,9 +253,6 @@ class Trainer:
     def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
         """collect all padding subsequence index and subsequence for updating subseq embeddings.
 
-        Args:
-            gcn_dataloader (DataLoader): _description_
-
         Returns:
             tuple[Tensor, Tensor]: all_subseq_ids is subseq id for all_subseq. all_subseq is padding subseq (index, not embedding)
         """
@@ -420,20 +278,18 @@ class Trainer:
         all_subseq_ids = all_subseq_ids[sorted_indices]
         all_subseq = all_subseq[sorted_indices]
         # * check if ID is always increasing
-        print(torch.all(torch.diff(all_subseq_ids) > 0))
+        # print(torch.all(torch.diff(all_subseq_ids) > 0))
 
         id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
         return all_subseq_ids, all_subseq
 
     def subseq_embed_update(self):
-        start = time.time()
         pad_mask = (self.all_subseq > 0).float().to(self.device)
         num_non_pad = pad_mask.sum(dim=1, keepdim=True)
         subseq_emb = self.model.item_embeddings(self.all_subseq.to(self.device))
         subseq_emb_avg = torch.sum(subseq_emb * pad_mask.unsqueeze(-1), dim=1) / num_non_pad
         # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
         self.model.subseq_embeddings.weight.data = subseq_emb_avg
-        pprint_color(f"subseq embeddings update time: {time.time() - start}")
 
     def subseq_embed_init(self, gcn_dataloader):
         for _, (rec_batch) in tqdm(

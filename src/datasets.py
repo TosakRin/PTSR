@@ -36,7 +36,6 @@ class RecWithContrastiveLearningDataset(Dataset):
     def __init__(
         self,
         user_seq: list[list[int]],
-        test_neg_items=None,
         data_type: str = "train",
     ) -> None:
         """torch.utils.dataDataset
@@ -48,13 +47,12 @@ class RecWithContrastiveLearningDataset(Dataset):
         """
 
         self.user_seq = user_seq
-        self.test_neg_items = test_neg_items
         self.data_type = data_type
         self.max_len: int = args.max_seq_length
 
         # create target item sets
-        self.sem_tag = TargetSubseqs(args.data_dir, args.data_name, args.data_dir)
-        self.train_tag: dict[int, list[list[int]]] = self.sem_tag._load_target_subseqs_dict(
+        target_item_subseq = TargetSubseqs(args.data_dir, args.data_name, args.data_dir)
+        self.train_tag: dict[int, list[list[int]]] = target_item_subseq._load_target_subseqs_dict(
             f"{args.data_dir}/{args.data_name}_1_t.pkl", mode="train"
         )
         self.get_pad_user_seq()
@@ -78,7 +76,6 @@ class RecWithContrastiveLearningDataset(Dataset):
         Returns:
             tuple:
         """
-        # copied_input_ids = copy.deepcopy(input_ids)         # todo: 需要做 deepcopy 吗?
         copied_input_ids = input_ids
 
         # * input padding and truncating
@@ -103,30 +100,29 @@ class RecWithContrastiveLearningDataset(Dataset):
             assert len(target_pos) == self.max_len
 
         # * assemble sequence
-        if self.test_neg_items is None:
-            return (
-                (
-                    torch.tensor(subseqs_id, dtype=torch.long),
-                    torch.tensor(user_id, dtype=torch.long),
-                    torch.tensor(copied_input_ids, dtype=torch.long),
-                    torch.tensor(target_pos_1, dtype=torch.long),
-                    torch.tensor(target_pos_2, dtype=torch.long),
-                    torch.tensor(answer, dtype=torch.long),
-                )
-                if isinstance(target_pos, tuple)
-                else (
-                    torch.tensor(user_id, dtype=torch.long),
-                    torch.tensor(copied_input_ids, dtype=torch.long),
-                    torch.tensor(target_pos, dtype=torch.long),
-                    torch.tensor(answer, dtype=torch.long),
-                )
+        return (
+            (
+                torch.tensor(subseqs_id, dtype=torch.long),
+                torch.tensor(user_id, dtype=torch.long),
+                torch.tensor(copied_input_ids, dtype=torch.long),
+                torch.tensor(target_pos_1, dtype=torch.long),
+                torch.tensor(target_pos_2, dtype=torch.long),
+                torch.tensor(answer, dtype=torch.long),
             )
+            if isinstance(target_pos, tuple)
+            else (
+                torch.tensor(user_id, dtype=torch.long),
+                torch.tensor(copied_input_ids, dtype=torch.long),
+                torch.tensor(target_pos, dtype=torch.long),
+                torch.tensor(answer, dtype=torch.long),
+            )
+        )
 
     def _add_noise_interactions(self, items: list[int]):
         """Add negative interactions to the sequence for robustness analysis.
 
         Args:
-            items (list[int]): _description_
+            items (list[int]): negative items as noise
 
         Returns:
             _type_: _description_
@@ -175,7 +171,7 @@ class RecWithContrastiveLearningDataset(Dataset):
             index (int): _description_
 
         Returns:
-            _type_: _description_
+            tuple(Tensor): 
         """
         user_id = index
         if args.loader == "old":
@@ -226,7 +222,6 @@ class RecWithContrastiveLearningDataset(Dataset):
         elif args.loader == "new":
             # * new loader: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
             pad_user_seq = self.pad_user_seq[index]
-            assert self.data_type in {"train", "valid", "test"}
             if self.data_type == "train":
                 user_seq = self.user_seq[index]
                 input_ids = pad_user_seq[:-3]
@@ -260,9 +255,7 @@ class RecWithContrastiveLearningDataset(Dataset):
             raise ValueError(f"Invalid loader mode: {args.loader_mode}")
 
     def __len__(self):
-        """
-        consider n_view of a single sequence as one sample
-        """
+        """consider n_view of a single sequence as one sample"""
         return len(self.user_seq)
 
     def get_pad_user_seq(self):
@@ -283,7 +276,7 @@ class RecWithContrastiveLearningDataset(Dataset):
 def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
     """Dynamic Segmentation operations to generate subsequence.
 
-    子序列基本逻辑:
+    子序列基本逻辑: 做一个从长度 4 开始的窗口, 当窗口长度不满 53 时, 向右增长滑动窗口的大小, 当窗口长度到达 53 后, 长度不变, start, end 每次向右滑动, 直到 end 到达原序列末尾.
 
     1. 序列长度小于等于 `max_save_len`, 以 `[start, end+1]` 生成最小子序列, 不断增加 `end`, 直到序列结束.
     2. 序列长度大于 `max_save_len`:
@@ -304,9 +297,7 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
     with open(i_file, "r+", encoding="utf-8") as fr:
         seq_list = fr.readlines()
     subseq_dict: dict[str, list] = {}
-    # training, validation, and testing
     max_save_len = max_len + 3
-    # save
     max_keep_len = max_len + 2
     for data in seq_list:
         u_i, seq_str = data.split(" ", 1)
@@ -318,7 +309,6 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
         # minimal subsequence length
         end = 3
         if len(seq) > max_save_len:
-            # training, validation, and testing
             while start < len(seq) - max_keep_len:
                 end = start + 4
                 while end < len(seq):

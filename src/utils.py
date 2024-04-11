@@ -16,6 +16,7 @@ from typing import Literal
 import numpy as np
 import torch
 from scipy.sparse import csr_matrix  # type: ignore
+from torch import Tensor
 
 from cprint import pprint_color
 
@@ -178,94 +179,52 @@ class EarlyStopping:
         self.score_min = score
 
 
-# No Use in this project
-def nCr(n, r):
+def mask_correlated_samples(batch_size: int):
+    N = 2 * batch_size
+    mask = torch.ones((N, N), dtype=torch.bool)
+    mask = mask.fill_diagonal_(0)
+    for i in range(batch_size):
+        mask[i, batch_size + i] = 0
+        mask[batch_size + i, i] = 0
+    return mask
+
+
+# * False Negative Mask
+def mask_correlated_samples_(label: Tensor):
     """
-    Calculates the number of combinations (n choose r).
+    Judge if other subsequence (except our subsequence pair) in the same batch has the same target item. Mask them on a subseq-subseq matrix and true the masked position matrix.
+
+    basic example: the index 1 and index 3 has the same target item. So mask the position (1, 3) and (3, 1) to 0.
+
+    ```python
+    >>> import torch
+    >>> torch.eq(torch.Tensor([1,2,3,2]), torch.Tensor([[1],[2],[3],[2]]))
+    tensor([[ True, False, False, False],
+            [False,  True, False,  True],
+            [False, False,  True, False],
+            [False,  True, False,  True]])
+    ```
+
 
     Args:
-        n (int): The total number of items.
-        r (int): The number of items to choose.
+        label (Tensor): The label tensor of shape [1, batch_size].
 
     Returns:
-        int: The number of combinations.
+        Tensor: The mask tensor of shape [2*batch_size, 2*batch_size], where correlated samples are masked with 0.
 
     """
-    f = math.factorial
-    return f(n) // f(r) // f(n - r)
+    # * SHAPE: [1, batch_size] -> [2, batch_size] -> [1, 2*batch_size] -> [2*batch_size, 1]
+    label = label.view(1, -1)
+    label = label.expand((2, label.shape[-1])).reshape(1, -1)
+    label = label.contiguous().view(-1, 1)
+
+    # * label: two subsequences' target item. label[0, batch_size] is the target item of the first subsequence. label[1, batch_size] is the target item of the second subsequence.
+    # * SHAPE: [2*batch_size, 2*batch_size]
+    mask = torch.eq(label, label.t())
+    return mask == 0
 
 
-# No Use in this project
-def neg_sample(item_set, item_size):  # []
-    item = random.randint(1, item_size - 1)
-    while item in item_set:
-        item = random.randint(1, item_size - 1)
-    return item
-
-
-# No Use in this project
-def kmax_pooling(x, dim, k):
-    index = x.topk(k, dim=dim)[1].sort(dim=dim)[0]
-    return x.gather(dim, index).squeeze(dim)
-
-
-# No Use in this project
-def avg_pooling(x, dim):
-    return x.sum(dim=dim) / x.size(dim)
-
-
-# No Use in this project
-def get_user_seqs_long(data_file):
-    lines = open(data_file, encoding="utf-8").readlines()
-    user_seq = []
-    long_sequence = []
-    item_set = set()
-    for line in lines:
-        user, items = line.strip().split(" ", 1)
-        items = items.split(" ")
-        items = [int(item) for item in items]
-        long_sequence.extend(items)
-        user_seq.append(items)
-        item_set = item_set | set(items)
-    max_item = max(item_set)
-
-    return user_seq, max_item, long_sequence
-
-
-# No Use in this project
-def get_user_seqs_and_sample(data_file, sample_file):
-    lines = open(data_file, encoding="utf-8").readlines()
-    user_seq = []
-    item_set = set()
-    for line in lines:
-        user, items = line.strip().split(" ", 1)
-        items = items.split(" ")
-        items = [int(item) for item in items]
-        user_seq.append(items)
-        item_set = item_set | set(items)
-    max_item = max(item_set)
-
-    lines = open(sample_file, encoding="utf-8").readlines()
-    sample_seq = []
-    for line in lines:
-        user, items = line.strip().split(" ", 1)
-        items = items.split(" ")
-        items = [int(item) for item in items]
-        sample_seq.append(items)
-
-    assert len(user_seq) == len(sample_seq)
-
-    return user_seq, max_item, sample_seq
-
-
-# No Use in this project
-def get_item2attribute_json(data_file):
-    item2attribute = json.loads(open(data_file, encoding="utf-8").readline())
-    attribute_set = set()
-    for item, attributes in item2attribute.items():
-        attribute_set = attribute_set | set(attributes)
-    attribute_size = max(attribute_set)  # 331
-    return item2attribute, attribute_size
-
-
-
+def write_cmd(cmd):
+    with open("../cmd.sh", mode="a", encoding="utf-8") as f:
+        f.write(cmd)
+        f.write("\n")

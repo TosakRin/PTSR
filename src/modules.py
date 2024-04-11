@@ -270,7 +270,7 @@ class NGCFLayer(nn.Module):
     def forward(self, adj, embeds):
         embeds = self.linear(embeds)
         # embeds = self.dropout(embeds)
-        return F.leaky_relu(torch.spmm(adj, embeds), negative_slope=0.2)
+        return F.leaky_relu(torch.sparse.mm(adj, embeds), negative_slope=0.2)
 
 
 class GATLayer(nn.Module):

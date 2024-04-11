@@ -35,9 +35,8 @@ class KMeans:
         self.num_cluster = num_cluster
         self.max_points_per_centroid = 4096
         self.min_points_per_centroid = 0
-        self.gpu_id = 0
+        self.gpu_id = gpu_id
         self.device = device
-        self.first_batch = True
         self.hidden_size = hidden_size
         self.clus, self.index = self.__init_cluster(self.hidden_size)
 
@@ -111,10 +110,10 @@ class SASRecModel(nn.Module):
         super().__init__()
         # * args.item_size: max_item + 2, 0 for padding.
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
-        self.subseq_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
+        self.subseq_embeddings = nn.Embedding(args.num_subseq_id, args.hidden_size)
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
         self.gcn_embeddings = None
-        # self.subseqs_embeddings = nn.Embedding(args.subseq_id_num, args.hidden_size)
+        # self.subseqs_embeddings = nn.Embedding(args.num_subseq_id, args.hidden_size)
 
         self.adagrad_params = [self.item_embeddings.weight]
         self.adam_params = [p for n, p in self.named_parameters() if n != "item_embeddings.weight"]
@@ -124,16 +123,15 @@ class SASRecModel(nn.Module):
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
         self.gcn = GCN()
 
-        self.criterion = nn.BCELoss(reduction="none")
+        self.criterion = nn.BCELoss(reduction="none")   # todo: BCELoss
         self.apply(self.init_weights)
 
     def add_position_embedding(self, sequence: Tensor, item_embeddings):
         """
 
-        1. Transfer idx to embedding
-        2. Add position embedding
-        3. LayerNorm
-        4. dropout
+        1. Add position embedding
+        2. LayerNorm
+        3. dropout
 
         Args:
             sequence (Tensor): [256, 50] -> [batch_size, seq_length]
@@ -323,4 +321,4 @@ class GCN(nn.Module):
             gcn_emb = gcn(adj, layers_gcn_emb_list[-1])
             layers_gcn_emb_list.append(gcn_emb)
         sum_emb = sum(layers_gcn_emb_list) / len(layers_gcn_emb_list)
-        return sum_emb[: args.subseq_id_num], sum_emb[args.subseq_id_num :]
+        return sum_emb[: args.num_subseq_id], sum_emb[args.num_subseq_id :]
