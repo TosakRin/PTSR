@@ -121,6 +121,8 @@ class Trainer:
 
         # * prepare padding subseq for subseq embedding update
         self.all_subseq_id, self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
+        self.pad_mask = (self.all_subseq > 0).float().to(self.device)
+        self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)  # todo: 可以抽出来
 
         self.best_scores = {
             "valid": {
@@ -284,10 +286,8 @@ class Trainer:
         return all_subseq_ids, all_subseq
 
     def subseq_embed_update(self):
-        pad_mask = (self.all_subseq > 0).float().to(self.device)
-        num_non_pad = pad_mask.sum(dim=1, keepdim=True)
         subseq_emb = self.model.item_embeddings(self.all_subseq.to(self.device))
-        subseq_emb_avg = torch.sum(subseq_emb * pad_mask.unsqueeze(-1), dim=1) / num_non_pad
+        subseq_emb_avg = torch.sum(subseq_emb * self.pad_mask.unsqueeze(-1), dim=1) / self.num_non_pad
         # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
         self.model.subseq_embeddings.weight.data = subseq_emb_avg
 
