@@ -172,6 +172,19 @@ class SASRecModel(nn.Module):
         # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
         return item_encoded_layers[-1]
 
+    def inference(self, input_ids: Tensor):
+        """inference: forward pass for test. The GCN in predict is fixed and not updated. So it's no need to update the GCN every batch"""
+        extended_attention_mask = self.get_transformer_mask(input_ids)
+        if args.gcn_mode in ["batch", "batch_gcn"]:
+            item_embeddings = self.all_item_emb[input_ids]
+        else:
+            item_embeddings = self.get_item_embeddings(input_ids)
+        sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
+        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
+
+        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
+        return item_encoded_layers[-1]
+
     def get_item_embeddings(self, input_ids: Tensor):
         if args.gcn_mode != "None":
             gcn_embeddings = self.gcn_embeddings(input_ids)
@@ -180,6 +193,7 @@ class SASRecModel(nn.Module):
         else:
             item_embeddings = self.item_embeddings(input_ids)
         return item_embeddings
+
     def get_transformer_mask(self, input_ids: Tensor):
         # * Shape: [batch_size, seq_length]
         attention_mask = (input_ids > 0).long()

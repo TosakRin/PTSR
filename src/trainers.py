@@ -535,6 +535,10 @@ class ICSRecTrainer(Trainer):
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
         with torch.no_grad():
             self.model.eval()
+            # * gcn is fixed in the test phase. So it's unnecessary to call gcn() every batch.
+            _, self.model.all_item_emb = self.gcn(
+                self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
+            )
             for i, batch in tqdm(
                 enumerate(dataloader),
                 total=len(dataloader),
@@ -545,7 +549,7 @@ class ICSRecTrainer(Trainer):
                 batch = tuple(t.to(self.device) for t in batch)
                 user_ids, input_ids, _, answers = batch
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-                recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
+                recommend_output: Tensor = self.model.inference(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]
                 recommend_output = recommend_output[:, -1, :]  # [BxH]
 
