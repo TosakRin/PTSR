@@ -345,7 +345,7 @@ class Trainer:
     def icsrec_loss(self, subsequence_1, subsequence_2, target_pos_1):
         # * intent representation learning task\
         cicl_loss, ficl_loss = 0.0, 0.0
-        coarse_intent_1, coarse_intent_2 = self.model(subsequence_1, self.graph), self.model(subsequence_2, self.graph)
+        coarse_intent_1, coarse_intent_2 = self.model(subsequence_1), self.model(subsequence_2)
         subseq_pair = [coarse_intent_1, coarse_intent_2]
         if "c" in args.cl_mode:
             cicl_loss = self.cicl_loss(subseq_pair, target_pos_1)
@@ -511,7 +511,7 @@ class ICSRecTrainer(Trainer):
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
             subseq_id, _, subsequence, _, _, _ = rec_batch
             # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-            seq_output_last_layer = self.model(subsequence, self.graph)
+            seq_output_last_layer = self.model(subsequence)
             # * SHAPE: [Batch_size, Hidden_size] -> [256, 64], use the last item as output.
             seq_output_last_item = seq_output_last_layer[:, -1, :]
             # * detach: Returns a new Tensor, detached from the current graph. The result will never require gradient.
