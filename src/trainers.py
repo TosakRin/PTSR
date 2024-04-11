@@ -18,6 +18,7 @@
 #
 
 
+import copy
 import gc
 import time
 import warnings
@@ -470,8 +471,7 @@ class ICSRecTrainer(Trainer):
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
-        # self.subseq_embed_update()
-        self.subseq_embed_init(self.cluster_dataloader)
+        self.subseq_embed_update()
         for batch_i, (rec_batch) in tqdm(
             enumerate(train_dataloader),
             total=batch_num,
