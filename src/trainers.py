@@ -88,6 +88,7 @@ class Trainer:
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
+        self.all_subseq_id, self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
 
         self.best_scores = {
             "valid": {
@@ -386,6 +387,41 @@ class Trainer:
             raise ValueError("Invalid scheduler")
         return scheduler
 
+    def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
+        """collect all padding subsequence index and subsequence for updating subseq embeddings.
+
+        Args:
+            gcn_dataloader (DataLoader): _description_
+
+        Returns:
+            tuple[Tensor, Tensor]: all_subseq_ids is subseq id for all_subseq. all_subseq is padding subseq (index, not embedding)
+        """
+        all_subseq_ids = []
+        all_subseq = []
+        for _, (rec_batch) in tqdm(
+            enumerate(gcn_dataloader),
+            total=len(gcn_dataloader),
+            desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
+            leave=False,
+            dynamic_ncols=True,
+        ):
+            subseq_id, _, subsequence, _, _, _ = rec_batch
+            all_subseq_ids.append(subseq_id)
+            all_subseq.append(subsequence)
+        all_subseq_ids = torch.cat(all_subseq_ids, dim=0)
+        all_subseq = torch.cat(all_subseq, dim=0)
+
+        # * remove duplicate subsequence
+        tensor_np = all_subseq_ids.numpy()
+        _, indices = np.unique(tensor_np, axis=0, return_index=True)
+        sorted_indices = np.sort(indices)
+        all_subseq_ids = all_subseq_ids[sorted_indices]
+        all_subseq = all_subseq[sorted_indices]
+        # * check if ID is always increasing
+        print(torch.all(torch.diff(all_subseq_ids) > 0))
+
+        id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
+        return all_subseq_ids, all_subseq
 
 class ICSRecTrainer(Trainer):
 
