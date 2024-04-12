@@ -326,7 +326,14 @@ class ICSRecTrainer(Trainer):
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
-        self.subseq_embed_update()
+        # * two different update: 1. update subseq embeddings 2. gcn update
+        if args.gcn_mode != "None":
+            self.subseq_embed_update()
+        if args.gcn_mode == "global":
+            # * call gcn every epoch
+            _, self.model.all_item_emb = self.gcn(
+                self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
+            )
         for batch_i, (rec_batch) in tqdm(
             enumerate(train_dataloader),
             total=batch_num,
@@ -440,9 +447,10 @@ class ICSRecTrainer(Trainer):
         with torch.no_grad():
             self.model.eval()
             # * gcn is fixed in the test phase. So it's unnecessary to call gcn() every batch.
-            _, self.model.all_item_emb = self.gcn(
-                self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
-            )
+            if args.gcn_mode != "None":
+                _, self.model.all_item_emb = self.gcn(
+                    self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
+                )
             for i, batch in tqdm(
                 enumerate(dataloader),
                 total=len(dataloader),
