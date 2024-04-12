@@ -184,4 +184,5 @@ proxy.sh
 AdaGCL/*
 src/runs/*
 runs/*
+src/runs_old/*
 cmd.sh
