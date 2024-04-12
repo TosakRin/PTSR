@@ -114,7 +114,8 @@ class SASRecModel(nn.Module):
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
         self.gcn_embeddings = None
         # self.subseqs_embeddings = nn.Embedding(args.num_subseq_id, args.hidden_size)
-
+        self.all_subseq_emb: Tensor = torch.zeros(args.num_subseq_id, args.hidden_size)
+        self.all_item_emb: Tensor = torch.zeros(args.item_size, args.hidden_size)
         self.adagrad_params = [self.item_embeddings.weight]
         self.adam_params = [p for n, p in self.named_parameters() if n != "item_embeddings.weight"]
 
@@ -152,6 +153,7 @@ class SASRecModel(nn.Module):
     def forward(self, input_ids: Tensor):
         # * GCN update branch
         if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
+            # todo: 使用 item_embeddings.weight, 因而得到结果会有梯度
             _, self.all_item_emb = self.gcn(
                 self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight
             )
