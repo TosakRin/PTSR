@@ -150,33 +150,17 @@ class SASRecModel(nn.Module):
 
     # model same as SASRec
     def forward(self, input_ids: Tensor):
-        if args.gcn_mode in ["batch", "batch_gcn"]:
-            return self.forward_gcn(input_ids)
-        extended_attention_mask = self.get_transformer_mask(input_ids)
-        item_embeddings = self.get_item_embeddings(input_ids)
-        sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
-        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
-
-        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
-        return item_encoded_layers[-1]
-
-    def forward_gcn(self, input_ids: Tensor):
-        extended_attention_mask = self.get_transformer_mask(input_ids)
-        _, self.all_item_emb = self.gcn(self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight)
-        item_embeddings = self.all_item_emb[input_ids]
-        sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
-        item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
-
-        # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
-        return item_encoded_layers[-1]
-
-    def inference(self, input_ids: Tensor):
-        """inference: forward pass for test. The GCN in predict is fixed and not updated. So it's no need to update the GCN every batch"""
-        extended_attention_mask = self.get_transformer_mask(input_ids)
-        if args.gcn_mode in ["batch", "batch_gcn"]:
+        # * GCN update branch
+        if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
+            _, self.all_item_emb = self.gcn(
+                self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight
+            )
+        # * item embedding branch
+        if args.gcn_mode in ["batch", "batch_gcn", "global"]:
             item_embeddings = self.all_item_emb[input_ids]
         else:
             item_embeddings = self.get_item_embeddings(input_ids)
+        extended_attention_mask = self.get_transformer_mask(input_ids)
         sequence_emb = self.add_position_embedding(input_ids, item_embeddings)
         item_encoded_layers = self.item_encoder(sequence_emb, extended_attention_mask, output_all_encoded_layers=True)
 
@@ -237,10 +221,8 @@ class SASRecModel(nn.Module):
             Tensor: Rating prediction. SHAPE: [batch_size, item_size]
         """
         # * SHAPE: [Item_size, Hidden_size]
-        if args.gcn_mode in ["batch", "batch_gcn"]:
+        if args.gcn_mode in ["batch", "batch_gcn", "global"]:
             test_item_emb = self.all_item_emb
-        elif args.gcn_mode == "global":
-            test_item_emb = self.gcn_embeddings.weight + self.item_embeddings.weight
         elif args.gcn_mode == "None":
             test_item_emb = self.item_embeddings.weight
         else:

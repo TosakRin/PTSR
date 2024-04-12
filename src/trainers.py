@@ -458,7 +458,7 @@ class ICSRecTrainer(Trainer):
                 batch = tuple(t.to(self.device) for t in batch)
                 user_ids, input_ids, _, answers = batch
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-                recommend_output: Tensor = self.model.inference(input_ids)  # [BxLxH]
+                recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]
                 recommend_output = recommend_output[:, -1, :]  # [BxH]
 
@@ -495,13 +495,16 @@ class ICSRecTrainer(Trainer):
 
     def train(self, epoch) -> None:
         assert self.train_dataloader is not None
+        args.mode = "train"
         self.train_epoch(epoch, self.cluster_dataloader, self.train_dataloader)
 
     def valid(self, epoch, full_sort=False) -> tuple[list[float], str]:
         assert self.eval_dataloader is not None
+        args.mode = "valid"
         return self.full_test_epoch(epoch, self.eval_dataloader, "valid")
 
     def test(self, epoch, full_sort=False) -> tuple[list[float], str]:
+        args.mode = "test"
         if full_sort:
             return self.full_test_epoch(epoch, self.test_dataloader, "test")
         return self.sample_test_epoch(epoch, self.test_dataloader)
