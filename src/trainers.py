@@ -128,19 +128,19 @@ class Trainer:
             "valid": {
                 "Epoch": 0,
                 "HIT@5": 0.0,
-                "NDCG@5": 0.0,
                 "HIT@10": 0.0,
-                "NDCG@10": 0.0,
                 "HIT@20": 0.0,
+                "NDCG@5": 0.0,
+                "NDCG@10": 0.0,
                 "NDCG@20": 0.0,
             },
             "test": {
                 "Epoch": 0,
                 "HIT@5": 0.0,
-                "NDCG@5": 0.0,
                 "HIT@10": 0.0,
-                "NDCG@10": 0.0,
                 "HIT@20": 0.0,
+                "NDCG@5": 0.0,
+                "NDCG@10": 0.0,
                 "NDCG@20": 0.0,
             },
         }
@@ -164,27 +164,26 @@ class Trainer:
 
         """
         recall, ndcg = [], []
-        for k in [5, 10, 15, 20]:
+        for k in [5, 10, 20]:
             recall.append(recall_at_k(answers, pred_list, k))
             ndcg.append(ndcg_k(answers, pred_list, k))
         post_fix = {
             "Epoch": epoch,
             "HIT@5": round(recall[0], 4),
-            "NDCG@5": round(ndcg[0], 4),
             "HIT@10": round(recall[1], 4),
+            "HIT@20": round(recall[2], 4),
+            "NDCG@5": round(ndcg[0], 4),
             "NDCG@10": round(ndcg[1], 4),
-            "HIT@20": round(recall[3], 4),
-            "NDCG@20": round(ndcg[3], 4),
+            "NDCG@20": round(ndcg[2], 4),
         }
 
         for key, value in post_fix.items():
             if key != "Epoch":
                 args.tb.add_scalar(f"{mode}/{key}", value, epoch, new_style=True)
-
-        # pprint_color(post_fix)
         args.logger.warning(post_fix)
+
         self.get_best_score(post_fix, mode)
-        return [recall[0], ndcg[0], recall[1], ndcg[1], recall[3], ndcg[3]], str(post_fix)
+        return [recall[0], ndcg[0], recall[1], ndcg[1], recall[2], ndcg[2]], str(post_fix)
 
     def get_best_score(self, scores, mode):
         for key, value in scores.items():
@@ -197,7 +196,12 @@ class Trainer:
                     self.best_scores[mode]["Epoch"],
                     new_style=True,
                 )
-        args.logger.critical(f"{self.best_scores[mode]}")
+
+        (
+            args.logger.critical(f"{self.best_scores[mode]}")
+            if mode == "test"
+            else args.logger.error(f"{self.best_scores[mode]}")
+        )
 
     def save(self, file_name: str):
         """Save the model to the file_name"""
