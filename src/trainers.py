@@ -121,7 +121,8 @@ class Trainer:
 
         # * prepare padding subseq for subseq embedding update
         self.all_subseq_id, self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
-        self.pad_mask = (self.all_subseq > 0).float().to(self.device)
+
+        self.pad_mask = (self.all_subseq > 0).to(self.device)  # todo: 显存
         self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)  # todo: 可以抽出来
 
         self.best_scores = {

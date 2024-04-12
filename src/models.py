@@ -123,7 +123,7 @@ class SASRecModel(nn.Module):
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
         self.gcn = GCN()
 
-        self.criterion = nn.BCELoss(reduction="none")   # todo: BCELoss
+        self.criterion = nn.BCELoss(reduction="none")  # todo: BCELoss
         self.apply(self.init_weights)
 
     def add_position_embedding(self, sequence: Tensor, item_embeddings):
