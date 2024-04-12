@@ -293,7 +293,9 @@ class Trainer:
     def subseq_embed_update(self):
         subseq_emb = self.model.item_embeddings(self.all_subseq.to(self.device))
         subseq_emb_avg = torch.sum(subseq_emb * self.pad_mask.unsqueeze(-1), dim=1) / self.num_non_pad
+        # * Three subseq embed update methods: 1. nn.Parameter 2. nn.Embedding 3. model.subseq_embeddings
         # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
+        # self.model.subseq_embeddings = subseq_emb_avg
         self.model.subseq_embeddings.weight.data = subseq_emb_avg
 
     def subseq_embed_init(self, gcn_dataloader):
@@ -328,8 +330,10 @@ class ICSRecTrainer(Trainer):
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
         # * two different update: 1. update subseq embeddings 2. gcn update
+        # * update subseq embeddings: 1. every epoch(√) 2. every batch 3. no update
         if args.gcn_mode != "None":
             self.subseq_embed_update()
+        # * update gcn: 1. every epoch 2. every batch(√) 3. no update
         if args.gcn_mode == "global":
             # * call gcn every epoch
             _, self.model.all_item_emb = self.gcn(
