@@ -36,9 +36,9 @@ def set_seed(seed: int):
 def check_path(path):
     if not os.path.exists(path):
         os.makedirs(path)
-        pprint_color(f'>>> output path: "{os.path.abspath(path)}" not exist, just created')
+        pprint_color(f'>>>model weight output dir: "{os.path.abspath(path)}" not exist, just created')
     else:
-        pprint_color(f'>>> output path: "{os.path.abspath(path)}" exist')
+        pprint_color(f'>>>model weight output dir: "{os.path.abspath(path)}" existed')
 
 
 def get_rating_matrix(

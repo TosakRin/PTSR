@@ -32,8 +32,12 @@ def main() -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
     pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
-    args.data_file = f"{args.data_dir}{args.data_name}.txt"
-    args.train_data_file = f"{args.data_dir}{args.data_name}_1.txt"
+    pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
+    pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')
+    pprint_color(f'==>> args.target_subseqs_path: "{args.target_subseqs_path}"')
+    pprint_color(f'==>> args.subseqs_target_path: "{args.subseqs_target_path}"')
+    pprint_color(f'==>> args.graph_path         : "{args.graph_path}"')
+
     save_time = time.strftime("%m%d-%H%M%S")
     args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
     log_path = os.path.join(args.log_dir, args.save_name)
