@@ -48,9 +48,9 @@ class RecWithContrastiveLearningDataset(Dataset):
         self.max_len: int = args.max_seq_length
 
         # create target item sets
-        target_item_subseq = TargetSubseqs(args.data_dir, args.data_name, args.data_dir)
+        target_item_subseq = TargetSubseqs(args.subseqs_path, args.target_subseqs_path, args.subseqs_target_path)
         self.train_tag: dict[int, list[list[int]]] = target_item_subseq._load_target_subseqs_dict(
-            f"{args.data_dir}/{args.data_name}_1_t.pkl", mode="train"
+            args.target_subseqs_path, mode="train"
         )
         self.get_pad_user_seq()
 

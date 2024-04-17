@@ -42,12 +42,14 @@ class TargetSubseqs:
         self.target_subseqs_path = target_subseqs_path
         self.subseqs_target_path = subseqs_target_path
 
+    @staticmethod
+    def generate_target_subseqs_dict(subseqs_path, target_subseqs_path) -> None:
         """Generate the target item for each subsequence, and save to pkl file."""
         # * data_f is the subsequences file
         train_dic: dict[int, list[list[int]]] = {}
         valid_dic: dict[int, list[list[int]]] = {}
         test_dic: dict[int, list[list[int]]] = {}
-        with open(self.subseqs_path, "r", encoding="utf-8") as fr:
+        with open(subseqs_path, "r", encoding="utf-8") as fr:
             subseq_list: list[str] = fr.readlines()
             for subseq in subseq_list:
                 items: list[str] = subseq.split(" ")
@@ -69,8 +71,8 @@ class TargetSubseqs:
                 test_dic[tag_test].append(test_temp)
 
         total_dic: dict[str, dict[int, list[list[int]]]] = {"train": train_dic, "valid": valid_dic, "test": test_dic}
-        pprint_color(f'>>> Saving target-item specific subsequence set to "{self.target_subseqs_path}"')
-        with open(self.target_subseqs_path, "wb") as fw:
+        pprint_color(f'>>> Saving target-item specific subsequence set to "{target_subseqs_path}"')
+        with open(target_subseqs_path, "wb") as fw:
             pickle.dump(total_dic, fw)
 
     def generate_subseqs_target_dict(self):
@@ -130,14 +132,14 @@ class TargetSubseqs:
             raise ValueError("invalid data path")
         if not os.path.exists(target_subseqs_path):
             pprint_color("The dict not exist, generating...")
-            self.generate_target_subseqs_dict()
+            self.generate_target_subseqs_dict(self.subseqs_path, self.target_subseqs_path)
         with open(target_subseqs_path, "rb") as read_file:
             data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
         self.target_subseqs_dict = data_dict[mode]
         return data_dict[mode]
 
     @staticmethod
-    def load_target_subseqs_dict(target_subseqs_path: str, mode="train"):
+    def load_target_subseqs_dict(subseqs_path, target_subseqs_path: str, mode="train"):
         """get the prefix subsequence set (dict).
 
         Args:
@@ -151,7 +153,7 @@ class TargetSubseqs:
             raise ValueError("invalid data path")
         if not os.path.exists(target_subseqs_path):
             pprint_color("The dict not exist, generating...")
-            self.generate_target_subseqs_dict()
+            TargetSubseqs.generate_target_subseqs_dict(subseqs_path, target_subseqs_path)
         with open(target_subseqs_path, "rb") as read_file:
             data_dict: dict[str, dict[int, list[list[int]]]] = pickle.load(read_file)
         return data_dict[mode]
@@ -460,6 +462,11 @@ if __name__ == "__main__":
         subseqs_path = f"{data_root}/{dataset}_subseq_{max_len}.txt"
         target_subseqs_dict_path = f"{data_root}/{dataset}_t_{max_len}.pkl"
         sparse_matrix_path = f"{data_root}/{dataset}_graph_{max_len}.pkl"
+
+        subseqs_path = f"{data_root}/{dataset}_subseq_merged.txt"
+        target_subseqs_dict_path = f"{data_root}/{dataset}_t_merged.pkl"
+        sparse_matrix_path = f"{data_root}/{dataset}_graph_merged.pkl"
+
         if os.path.exists(sparse_matrix_path) and not force_flag:
             pprint_color(f'>>> "{sparse_matrix_path}" exists, skip.')
             continue
