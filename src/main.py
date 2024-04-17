@@ -8,8 +8,8 @@ import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from cprint import pprint_color
-from datasets import DS, build_dataloader
-from graph import TargetSubseqs
+from datasets import build_dataloader
+from graph import DS, TargetSubseqs
 from logger import set_logger
 from models import GRUEncoder, SASRecModel
 from param import args, print_args_info

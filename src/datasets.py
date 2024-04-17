@@ -18,10 +18,7 @@
 
 
 import copy
-import os
-import pickle
 import random
-from ast import literal_eval
 
 import numpy as np
 import torch
@@ -271,64 +268,6 @@ class RecWithContrastiveLearningDataset(Dataset):
 
         self.origin_pad_map = dict(zip(user_seq, self.pad_user_seq))
         self.pad_origin_map = dict(zip(self.pad_user_seq, user_seq))
-
-
-def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
-    """Dynamic Segmentation operations to generate subsequence.
-
-    子序列基本逻辑: 做一个从长度 4 开始的窗口, 当窗口长度不满 53 时, 向右增长滑动窗口的大小, 当窗口长度到达 53 后, 长度不变, start, end 每次向右滑动, 直到 end 到达原序列末尾.
-
-    1. 序列长度小于等于 `max_save_len`, 以 `[start, end+1]` 生成最小子序列, 不断增加 `end`, 直到序列结束.
-    2. 序列长度大于 `max_save_len`:
-        2.1 `start < 1`, 以 `[start, end]` 生成最小子序列, 不断增加 `end`, 直到 `end` 到达序列末尾, 或者 `end - start < max_len`
-        2.2 `start >= 1`, 以 `[start, start+max_len]` 生成子序列, 不断增加 `start`, 直到 start 到达序列长度 - max_save_len
-
-    对于一个长度为 n (n>max_save_len) 的序列:
-
-    - 2.1 生成的子序列个数为 max_save_len - end, 比如 n=85, max_save_len=53, end=4, 生成的子序列个数为 53 - 4 = 49. 这 49 个子序列的开始都为 0, 结束为 3, 4, 5, ..., 51. 长度为 4, 5, 6, ..., 52.
-    - 2.2 生成的子序列个数为 n - max_keep_len, 比如 n=85, max_keep_len=52, 生成的子序列个数为 33. 这 33 个子序列的开始为 0, 1, 2, 3, ..., 32, 结束为 52, 53, 54, ..., 84. 长度都为 53.
-
-    Args:
-        i_file (str): input file path
-        o_file (str): output file path
-        max_len (int): the max length of the sequence
-    """
-    pprint_color(">>> Using DS to generate subsequence ...")
-    with open(i_file, "r+", encoding="utf-8") as fr:
-        seq_list = fr.readlines()
-    subseq_dict: dict[str, list] = {}
-    max_save_len = max_len + 3
-    max_keep_len = max_len + 2
-    for data in seq_list:
-        u_i, seq_str = data.split(" ", 1)
-        seq = seq_str.split(" ")
-        # ? str -> int -> str
-        seq[-1] = str(literal_eval(seq[-1]))
-        subseq_dict.setdefault(u_i, [])
-        start = 0
-        # minimal subsequence length
-        end = 3
-        if len(seq) > max_save_len:
-            while start < len(seq) - max_keep_len:
-                end = start + 4
-                while end < len(seq):
-                    if start < 1 and end - start < max_save_len:
-                        subseq_dict[u_i].append(seq[start:end])
-                        end += 1
-                    else:
-                        subseq_dict[u_i].append(seq[start : start + max_save_len])
-                        break
-                start += 1
-        else:
-            while end < len(seq):
-                subseq_dict[u_i].append(seq[start : end + 1])
-                end += 1
-
-    with open(o_file, "w+", encoding="utf-8") as fw:
-        for u_i, subseq_list in subseq_dict.items():
-            for subseq in subseq_list:
-                fw.write(f"{u_i} {' '.join(subseq)}\n")
-    pprint_color(f">>> DS done, written to {o_file}")
 
 
 def build_dataloader(user_seq, loader_type):
