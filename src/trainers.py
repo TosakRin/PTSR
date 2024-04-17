@@ -93,8 +93,7 @@ class Trainer:
         if cuda_condition:
             self.model.cuda()
             self.gcn.cuda()
-        graph_path = f"{args.data_dir}/{args.data_name}_graph.pkl"
-        self.graph = Graph(graph_path)
+        self.graph = Graph(args.graph_path)
         self.model.graph = self.graph
         if "f" in args.cl_mode:
             cluster = KMeans(

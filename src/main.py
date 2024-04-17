@@ -32,6 +32,14 @@ def main() -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
     pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
+
+    # * data path
+    args.seqs_path = f"{args.data_dir}{args.data_name}.txt"
+    args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
+    args.target_subseqs_path = f"{args.data_dir}{args.data_name}_1_t.pkl"
+    args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
+    args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
+
     pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
     pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')
     pprint_color(f'==>> args.target_subseqs_path: "{args.target_subseqs_path}"')
@@ -45,20 +53,18 @@ def main() -> None:
     args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
 
     # * construct supervisory signals via DS(·) operation
-    if not os.path.exists(args.train_data_file):
-        DS(args.data_file, args.train_data_file, args.max_seq_length)
+    if not os.path.exists(args.subseqs_path):
+        DS(args.seqs_path, args.subseqs_path, args.max_seq_length)
     else:
-        pprint_color(f'>>> Subsequence data already exists in "{args.train_data_file}". Skip DS operation.')
+        pprint_color(f'>>> Subsequence data already exists in "{args.subseqs_path}". Skip DS operation.')
 
     # * training data: train_user_seq is a list of subsequences.
-    pprint_color(f'>>> Loading train_user_seq (subsequence) from "{args.train_data_file}"')
-    train_user_seq = get_user_seqs(args.train_data_file)
+    train_user_seq = get_user_seqs(args.subseqs_path)
     # * valid and test data: test_user_seq is a list of original sequences.
-    pprint_color(f'>>> Loading valid and test data (user sequence & rating matrix) from "{args.data_file}"')
-    test_user_seq = get_user_seqs(args.data_file)
+    test_user_seq = get_user_seqs(args.seqs_path)
 
-    max_item = get_max_item(args.data_file)
-    num_users = get_num_users(args.data_file)
+    max_item = get_max_item(args.seqs_path)
+    num_users = get_num_users(args.seqs_path)
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
     args.item_size = max_item + 2
     args.mask_id = max_item + 1

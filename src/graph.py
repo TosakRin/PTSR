@@ -29,7 +29,7 @@ class TargetSubseqs:
 
     target_subseqs_dict: dict[int, list[list[int]]]
 
-    def __init__(self, data_dir: str, data_name: str, save_path: str) -> None:
+    def __init__(self, subseqs_path: str, target_subseqs_path: str, subseqs_target_path: str) -> None:
         """
 
         Args:
@@ -37,11 +37,10 @@ class TargetSubseqs:
             data_name (str): dataset name, e.g., Beauty
             save_path (str): save dir, e.g., ../data
         """
-        self.subseqs_path = f"{data_dir}/{data_name}_1.txt"
-        self.target_subseqs_path = f"{save_path}/{data_name}_1_t.pkl"
-        self.subseqs_target_path = f"{save_path}/{data_name}_1_s.pkl"
+        self.subseqs_path = subseqs_path
+        self.target_subseqs_path = target_subseqs_path
+        self.subseqs_target_path = subseqs_target_path
 
-    def generate_target_subseqs_dict(self) -> None:
         """Generate the target item for each subsequence, and save to pkl file."""
         # * data_f is the subsequences file
         train_dic: dict[int, list[list[int]]] = {}
