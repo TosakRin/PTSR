@@ -441,6 +441,9 @@ def DS(i_file: str, o_file: str, max_len: int = 50) -> None:
 
 
 if __name__ == "__main__":
+    pprint_color(">>> subsequences and graph generation pipeline")
+    pprint_color(">>> Start to generate subsequence and build graph ...")
+
     force_flag = True
     dataset_list = [
         "Beauty",
@@ -449,16 +452,25 @@ if __name__ == "__main__":
         "Toys_and_Games",
     ]
     for dataset in dataset_list:
-        target_subseqs_dict_path = f"../data/{dataset}_1_t.pkl"
-        subseqs_path = f"../data/{dataset}_1.txt"
+        data_root = "../subseq"
+        if not os.path.exists(data_root):
+            os.makedirs(data_root)
+        max_len = 1
         seqs_path = f"../data/{dataset}.txt"
-        sparse_matrix_path = f"../data/{dataset}_graph.pkl"
+        subseqs_path = f"{data_root}/{dataset}_subseq_{max_len}.txt"
+        target_subseqs_dict_path = f"{data_root}/{dataset}_t_{max_len}.pkl"
+        sparse_matrix_path = f"{data_root}/{dataset}_graph_{max_len}.pkl"
         if os.path.exists(sparse_matrix_path) and not force_flag:
             pprint_color(f'>>> "{sparse_matrix_path}" exists, skip.')
             continue
 
-        target_subseqs_dict = TargetSubseqs.load_target_subseqs_dict(target_subseqs_dict_path)
-        subseq_id_map, id_subseq_map = TargetSubseqs.get_subseq_id_map(subseqs_path)
+        # * 1. generate subseqs from original seqs file
+        DS(seqs_path, subseqs_path, max_len)
+        # * 2. generate Target-Subseqs Dict from subseqs file
+        target_subseqs_dict = TargetSubseqs.load_target_subseqs_dict(subseqs_path, target_subseqs_dict_path)
+        # * 3. generate subseq id map from subseqs file
+        subseq_id_map, _ = TargetSubseqs.get_subseq_id_map(subseqs_path)
         max_item = get_max_item(seqs_path)
+        # * 4. build graph from target subseqs dict
         graph = Graph.build_graph(target_subseqs_dict, subseq_id_map, max_item + 1, len(subseq_id_map))
         Graph.save_sparse_matrix(sparse_matrix_path, graph)

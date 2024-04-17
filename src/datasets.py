@@ -283,20 +283,3 @@ def build_dataloader(user_seq, loader_type):
         pin_memory=True,
         prefetch_factor=8,
     )
-
-
-if __name__ == "__main__":
-    # * dynamic segmentation
-    DS("../data/Beauty.txt", "../data/Beauty_1.txt", 10)
-    # DS_default("../data/Beauty.txt", "../data/Beauty_1.txt")
-    # * generate target item
-    g = TargetSubseqs("../data", "Beauty", "../data")
-    # * generate the dictionary
-    data = g._load_target_subseqs_dict("../data/Beauty_1_t.pkl", "train")
-    i = 0
-    # * Only one sequence in the data dictionary in the training phase has the target item ID
-    for d_ in data:
-        if len(data[d_]) < 2:
-            i += 1
-            pprint_color(f"less is : {data[d_]} target_id : {d_}")
-    pprint_color(i)
