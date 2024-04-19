@@ -173,7 +173,6 @@ class EarlyStopping:
     def save_checkpoint(self, score, model):
         """Saves model when validation loss decrease."""
         if self.verbose:
-            # ({self.score_min:.6f} --> {score:.6f}) # 这里如果是一个值的话输出才不会有问题
             pprint_color(">>> Validation score increased.  Saving model ...")
         torch.save(model.state_dict(), self.checkpoint_path)
         self.score_min = score
@@ -204,7 +203,6 @@ def mask_correlated_samples_(label: Tensor):
             [False, False,  True, False],
             [False,  True, False,  True]])
     ```
-
 
     Args:
         label (Tensor): The label tensor of shape [1, batch_size].

@@ -377,7 +377,7 @@ class ICSRecTrainer(Trainer):
         # * print & write log for each epoch
         # * post_fix: print the average loss of the epoch
         post_fix = {
-            "epoch": epoch,
+            "Epoch": epoch,
             "lr_adam": round(self.optim_adam.param_groups[0]["lr"], 6),
             "lr_adagrad": round(self.optim_adagrad.param_groups[0]["lr"], 6),
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
@@ -390,7 +390,6 @@ class ICSRecTrainer(Trainer):
                 args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
 
         if (epoch + 1) % args.log_freq == 0:
-            # pprint_color(str(post_fix))
             args.logger.info(str(post_fix))
 
     def cluster_epoch(self, cluster_dataloader):
@@ -406,9 +405,6 @@ class ICSRecTrainer(Trainer):
         assert cluster_dataloader is not None
         self.model.eval()
         kmeans_training_data = []
-
-        subseq_embedding_dict = OrderedDict()
-
         for _, (rec_batch) in tqdm(
             enumerate(cluster_dataloader),
             total=len(cluster_dataloader),
@@ -417,7 +413,7 @@ class ICSRecTrainer(Trainer):
             dynamic_ncols=True,
         ):
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            subseq_id, _, subsequence, _, _, _ = rec_batch
+            _, _, subsequence, _, _, _ = rec_batch
             # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
             seq_output_last_layer = self.model(subsequence)
             # * SHAPE: [Batch_size, Hidden_size] -> [256, 64], use the last item as output.
@@ -498,7 +494,7 @@ class ICSRecTrainer(Trainer):
         args.mode = "train"
         self.train_epoch(epoch, self.cluster_dataloader, self.train_dataloader)
 
-    def valid(self, epoch, full_sort=False) -> tuple[list[float], str]:
+    def valid(self, epoch) -> tuple[list[float], str]:
         assert self.eval_dataloader is not None
         args.mode = "valid"
         return self.full_test_epoch(epoch, self.eval_dataloader, "valid")

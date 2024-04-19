@@ -15,7 +15,6 @@ from models import GRUEncoder, SASRecModel
 from param import args, print_args_info
 from trainers import ICSRecTrainer, do_eval, do_train
 from utils import (
-    EarlyStopping,
     check_path,
     get_max_item,
     get_num_users,
