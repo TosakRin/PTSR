@@ -39,6 +39,11 @@ def main() -> None:
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
     args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
 
+    # * other data path
+    # args.data_dir = "../subseq/"
+    # args.subseqs_path = "../subseq/Beauty_subseq_merged_10_20_30_40.txt"
+    # args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_merged_10_20_30_40.pkl"
+    # args.graph_path = f"{args.data_dir}{args.data_name}_graph_merged_10_20_30_40.pkl"
     pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
     pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')
     pprint_color(f'==>> args.target_subseqs_path: "{args.target_subseqs_path}"')
@@ -86,11 +91,15 @@ def main() -> None:
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
     args.rating_matrix = valid_rating_matrix
 
-    args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.train_data_file)
+    # args.subseqs_path = "../subseq/Beauty_subseq_5.txt"
+    # args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
+    args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
     args.num_subseq_id = len(args.subseq_id_map)
 
+    # * cluster -> GNN, train -> SASRec
+    cluster_user_seq = get_user_seqs(args.subseqs_path)
     train_dataloader = build_dataloader(train_user_seq, "train")
-    cluster_dataloader = build_dataloader(train_user_seq, "cluster")
+    cluster_dataloader = build_dataloader(cluster_user_seq, "cluster")
     eval_dataloader = build_dataloader(test_user_seq, "valid")
     test_dataloader = build_dataloader(test_user_seq, "test")
 

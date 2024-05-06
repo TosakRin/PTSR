@@ -168,14 +168,14 @@ class RecWithContrastiveLearningDataset(Dataset):
             index (int): _description_
 
         Returns:
-            tuple(Tensor): 
+            tuple(Tensor):
         """
         user_id = index
         if args.loader == "old":
             user_seq = self.user_seq[index]
-            assert self.data_type in {"train", "valid", "test"}
+            assert self.data_type in {"train", "valid", "test", "cluster"}
 
-            if self.data_type == "train":
+            if self.data_type in ["train", "cluster"]:
                 # * Remember that Training data (items) is subsequence
                 input_ids: list[int] = user_seq[:-3]
                 target_pos = user_seq[1:-2]
@@ -210,7 +210,7 @@ class RecWithContrastiveLearningDataset(Dataset):
                 answer = [items_with_noise[-1]]
 
             # * Sample the data
-            if self.data_type == "train":
+            if self.data_type in ["train", "cluster"]:
                 train_target_pos = (target_pos, target_pos_)
                 return self._data_sample_rec_task(user_id, user_seq, input_ids, train_target_pos, answer)
             if self.data_type == "valid":
@@ -219,13 +219,17 @@ class RecWithContrastiveLearningDataset(Dataset):
         elif args.loader == "new":
             # * new loader: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
             pad_user_seq = self.pad_user_seq[index]
-            if self.data_type == "train":
+            if self.data_type in ["train", "cluster"]:
                 user_seq = self.user_seq[index]
                 input_ids = pad_user_seq[:-3]
                 target_pos = pad_user_seq[1:-2]
                 answer = [0]
+                if self.data_type == "cluster":
+                    subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]]
+                else:
+                    subseqs_id = []
                 return (
-                    torch.tensor(args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]], dtype=torch.long),
+                    torch.tensor(subseqs_id, dtype=torch.long),
                     torch.tensor(user_id, dtype=torch.long),
                     torch.tensor(input_ids, dtype=torch.long),
                     torch.tensor(target_pos, dtype=torch.long),
@@ -271,7 +275,8 @@ class RecWithContrastiveLearningDataset(Dataset):
 
 
 def build_dataloader(user_seq, loader_type):
-    data_type = loader_type if loader_type != "cluster" else "train"
+    # data_type = loader_type if loader_type != "cluster" else "train"
+    data_type = loader_type
     sampler = RandomSampler if loader_type == "train" else SequentialSampler
     pprint_color(f">>> Building {loader_type} Dataloader")
     dataset = RecWithContrastiveLearningDataset(user_seq, data_type=data_type)
