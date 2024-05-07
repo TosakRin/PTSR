@@ -241,7 +241,6 @@ class Trainer:
         loss_si = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
         loss_is = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
         return (loss_si + loss_is).mean()
-        return (loss_si + loss_is).mean()
 
     @staticmethod
     def get_scheduler(optimizer):
@@ -365,10 +364,11 @@ class ICSRecTrainer(Trainer):
             cicl_loss, ficl_loss = 0.0, 0.0
             if args.cl_mode in ["c", "f", "cf"]:
                 cicl_loss, ficl_loss = self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
-            recon_loss = self.recon_loss(self.model.all_subseq_emb, self.model.all_item_emb, subseq_id, target_id)
 
             icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
             joint_loss = args.rec_weight * rec_loss + icl_loss
+            if args.recon:
+                joint_loss += self.recon_loss(self.model.all_subseq_emb, self.model.all_item_emb, subseq_id, target_id)
 
             # self.optim_adagrad.zero_grad()
             self.optim_adam.zero_grad()

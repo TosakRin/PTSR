@@ -95,6 +95,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gamma", default=0.1, type=float, help="gamma for MultiStepLR")
     parser.add_argument("--batch_loss", action="store_true", help="Tensorboard record batch loss")
     parser.add_argument("--loader", default="None", type=str, help="dataloader mode")
+    parser.add_argument("--recon", action="store_true", help="reconstruct the model")
+
     return parser.parse_args()
 
 
