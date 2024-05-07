@@ -53,7 +53,7 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
         args.rating_matrix = valid_rating_matrix
         trainer.train(epoch)
         # * evaluate on NDCG@20
-        scores, _ = trainer.valid(epoch, full_sort=True)
+        scores, _ = trainer.valid(epoch)
         early_stopping(np.array(scores[-1:]), trainer.model)
         # * test on while training
         if args.do_test:
@@ -299,14 +299,10 @@ class Trainer:
         # * Three subseq embed update methods: 1. nn.Parameter 2. nn.Embedding 3. model.subseq_embeddings
         # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
         # self.model.subseq_embeddings = subseq_emb_avg
-        # self.model.subseq_embeddings.weight.data = subseq_emb_avg # todo: no grad?
 
         self.model.subseq_embeddings.weight.data = (
             subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.subseq_embeddings.weight.data) / 2
         )  # todo: 这样可以实现快速收敛
-        # self.model.subseq_embeddings.weight.data = (
-        #     subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.all_subseq_emb) / 2
-        # )
 
 
 class ICSRecTrainer(Trainer):
@@ -340,7 +336,7 @@ class ICSRecTrainer(Trainer):
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            _, _, subsequence_1, target_pos_1, subsequence_2, _ = rec_batch
+            subseq_id, _, subsequence_1, target_pos_1, subsequence_2, target_id = rec_batch
 
             # * prediction task
             intent_output = self.model(subsequence_1)

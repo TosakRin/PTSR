@@ -154,7 +154,7 @@ class SASRecModel(nn.Module):
         # * GCN update branch
         if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
             # todo: 使用 item_embeddings.weight, 因而得到结果会有梯度
-            _, self.all_item_emb = self.gcn(
+            self.all_subseq_emb, self.all_item_emb = self.gcn(
                 self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight
             )
         # * item embedding branch
