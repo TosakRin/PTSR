@@ -223,17 +223,14 @@ class RecWithContrastiveLearningDataset(Dataset):
                 user_seq = self.user_seq[index]
                 input_ids = pad_user_seq[:-3]
                 target_pos = pad_user_seq[1:-2]
-                answer = [0]
-                if self.data_type == "cluster":
-                    subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]]
-                else:
-                    subseqs_id = []
+                answer = target_pos[-1]
+                subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]]
                 return (
                     torch.tensor(subseqs_id, dtype=torch.long),
                     torch.tensor(user_id, dtype=torch.long),
                     torch.tensor(input_ids, dtype=torch.long),
                     torch.tensor(target_pos, dtype=torch.long),
-                    torch.tensor(target_pos, dtype=torch.long),
+                    torch.tensor(input_ids, dtype=torch.long),
                     torch.tensor(answer, dtype=torch.long),
                 )
             elif self.data_type == "valid":

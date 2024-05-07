@@ -90,9 +90,11 @@ class Trainer:
 
         self.model = torch.compile(model) if args.compile else model
         self.gcn = GCN()
+        self.predictor = nn.Linear(args.hidden_size, args.hidden_size)
         if cuda_condition:
             self.model.cuda()
             self.gcn.cuda()
+            self.predictor.cuda()
         self.graph = Graph(args.graph_path)
         self.model.graph = self.graph
         if "f" in args.cl_mode:
@@ -224,6 +226,22 @@ class Trainer:
             ficl = ficl_loss(subseq_pair, self.clusters_t[0])
         return cicl, ficl
 
+    def recon_loss(self, subseq_emb, item_emb, subseq_id, item_id):
+        with torch.no_grad():
+            subseq_target, item_target = subseq_emb.clone(), item_emb.clone()
+            subseq_target.detach()
+            item_target.detach()
+            subseq_target = F.dropout(subseq_target, 0.5)
+            item_target = F.dropout(item_target, 0.5)
+        subseq_online, item_online = self.predictor(subseq_emb), self.predictor(item_emb)
+        subseq_online = subseq_online[subseq_id, :]
+        item_online = item_online[item_id, :]
+        subseq_target = subseq_target[subseq_id, :]
+        item_target = item_target[item_id, :]
+        loss_ui = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
+        loss_iu = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
+        return (loss_ui + loss_iu).mean()
+
     @staticmethod
     def get_scheduler(optimizer):
         if args.scheduler == "step":
@@ -346,6 +364,7 @@ class ICSRecTrainer(Trainer):
             cicl_loss, ficl_loss = 0.0, 0.0
             if args.cl_mode in ["c", "f", "cf"]:
                 cicl_loss, ficl_loss = self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
+            recon_loss = self.recon_loss(self.model.all_subseq_emb, self.model.all_item_emb, subseq_id, target_id)
 
             icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
             joint_loss = args.rec_weight * rec_loss + icl_loss
