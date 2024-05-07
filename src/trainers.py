@@ -238,9 +238,10 @@ class Trainer:
         item_online = item_online[item_id, :]
         subseq_target = subseq_target[subseq_id, :]
         item_target = item_target[item_id, :]
-        loss_ui = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
-        loss_iu = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
-        return (loss_ui + loss_iu).mean()
+        loss_si = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
+        loss_is = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
+        return (loss_si + loss_is).mean()
+        return (loss_si + loss_is).mean()
 
     @staticmethod
     def get_scheduler(optimizer):
