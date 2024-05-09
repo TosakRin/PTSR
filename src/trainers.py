@@ -37,7 +37,7 @@ from tqdm.rich import tqdm
 
 from cprint import pprint_color
 from graph import Graph
-from loss import cicl_loss, ficl_loss
+from loss import EmbLoss, cicl_loss, ficl_loss
 from metric import get_metric, ndcg_k, recall_at_k
 from models import GCN, GRUEncoder, KMeans, SASRecModel
 from param import args
@@ -90,12 +90,14 @@ class Trainer:
 
         self.model = torch.compile(model) if args.compile else model
         self.gcn = GCN()
-        self.predictor = nn.Linear(args.hidden_size, args.hidden_size)
-        nn.init.xavier_normal_(self.predictor.weight)
+        # self.predictor = nn.Linear(args.hidden_size, args.hidden_size)
+        # nn.init.xavier_normal_(self.predictor.weight)
+        # self.reg_loss = EmbLoss()
         if cuda_condition:
             self.model.cuda()
             self.gcn.cuda()
-            self.predictor.cuda()
+            # self.predictor.cuda()
+            # self.reg_loss.cuda()
         self.graph = Graph(args.graph_path)
         self.model.graph = self.graph
         if "f" in args.cl_mode:
@@ -241,7 +243,9 @@ class Trainer:
         item_target = item_target[item_id, :]
         loss_si = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
         loss_is = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
-        return (loss_si + loss_is).mean()
+        reg_loss = self.reg_loss(subseq_emb, item_emb)
+        # print(f"loss_si: {loss_si}, loss_is: {loss_is}, reg_loss: {reg_loss}")
+        return (loss_si + loss_is).mean() + reg_loss.item()
 
     @staticmethod
     def get_scheduler(optimizer):

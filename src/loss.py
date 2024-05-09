@@ -113,3 +113,18 @@ def ficl_loss(subseq_pair: list[Tensor], clusters_t: list[KMeans]):
             ficl_loss += loss_n
 
     return ficl_loss
+
+
+class EmbLoss(nn.Module):
+    """EmbLoss, regularization on embeddings"""
+
+    def __init__(self, norm=2):
+        super(EmbLoss, self).__init__()
+        self.norm = norm
+
+    def forward(self, *embeddings):
+        emb_loss = torch.zeros(1).to(embeddings[-1].device)
+        for embedding in embeddings:
+            emb_loss += torch.norm(embedding, p=self.norm)
+        emb_loss /= embeddings[-1].shape[0]
+        return emb_loss
