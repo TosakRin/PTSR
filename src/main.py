@@ -108,10 +108,7 @@ def main() -> None:
         model = GRUEncoder()
     trainer = ICSRecTrainer(model, train_dataloader, cluster_dataloader, eval_dataloader, test_dataloader)
 
-    if args.do_eval:
-        args.checkpoint_path = os.path.join(args.output_dir, f"{args.model_name}-SAS-{args.data_name}-latest.pt")
-    else:
-        do_train(trainer, valid_rating_matrix, test_rating_matrix)
+    do_train(trainer, valid_rating_matrix, test_rating_matrix)
     args.tb.close()
 
 

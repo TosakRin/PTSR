@@ -224,7 +224,7 @@ class RecWithContrastiveLearningDataset(Dataset):
                 input_ids = pad_user_seq[:-3]
                 target_pos = pad_user_seq[1:-2]
                 answer = target_pos[-1]
-                subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]]
+                subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]] if self.data_type == "cluster" else []
                 return (
                     torch.tensor(subseqs_id, dtype=torch.long),
                     torch.tensor(user_id, dtype=torch.long),
@@ -281,7 +281,7 @@ def build_dataloader(user_seq, loader_type):
         dataset,
         sampler=sampler(dataset),
         batch_size=args.batch_size,
-        num_workers=16,
+        num_workers=1,
         pin_memory=True,
-        prefetch_factor=8,
+        prefetch_factor=1,
     )
