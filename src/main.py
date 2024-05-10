@@ -39,11 +39,6 @@ def main() -> None:
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
     args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
 
-    # * other data path
-    # args.data_dir = "../subseq/"
-    # args.subseqs_path = "../subseq/Beauty_subseq_merged_10_20_30_40.txt"
-    # args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_merged_10_20_30_40.pkl"
-    # args.graph_path = f"{args.data_dir}{args.data_name}_graph_merged_10_20_30_40.pkl"
     pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
     pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')
     pprint_color(f'==>> args.target_subseqs_path: "{args.target_subseqs_path}"')

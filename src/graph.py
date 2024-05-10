@@ -463,10 +463,6 @@ if __name__ == "__main__":
         target_subseqs_dict_path = f"{data_root}/{dataset}_t_{max_len}.pkl"
         sparse_matrix_path = f"{data_root}/{dataset}_graph_{max_len}.pkl"
 
-        # subseqs_path = f"{data_root}/{dataset}_subseq_merged.txt"
-        # target_subseqs_dict_path = f"{data_root}/{dataset}_t_merged.pkl"
-        # sparse_matrix_path = f"{data_root}/{dataset}_graph_merged.pkl"
-
         if os.path.exists(sparse_matrix_path) and not force_flag:
             pprint_color(f'>>> "{sparse_matrix_path}" exists, skip.')
             continue
