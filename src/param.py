@@ -53,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.5, help="hidden dropout p")
     parser.add_argument("--initializer_range", type=float, default=0.02)
     parser.add_argument("--max_seq_length", default=50, type=int)
+    parser.add_argument("--subseq_len", default=50, type=int)
 
     # * train args
     parser.add_argument("--lr_adam", type=float, default=0.001, help="learning rate of adam")
@@ -98,6 +99,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_loss", action="store_true", help="Tensorboard record batch loss")
     parser.add_argument("--loader", default="None", type=str, help="dataloader mode")
     parser.add_argument("--recon", action="store_true", help="reconstruct the model")
+    parser.add_argument("--graph_split", action="store_true", help="train use 50 subsequnce while graph use others")
 
     return parser.parse_args()
 

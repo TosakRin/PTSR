@@ -33,11 +33,17 @@ def main() -> None:
     pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
 
     # * data path
-    args.seqs_path = f"{args.data_dir}{args.data_name}.txt"
-    args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
-    args.target_subseqs_path = f"{args.data_dir}{args.data_name}_1_t.pkl"
+    args.seqs_path = f"../data/{args.data_name}.txt"
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
-    args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
+    if "data" in args.data_dir:
+        args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
+        args.target_subseqs_path = f"{args.data_dir}{args.data_name}_1_t.pkl"
+        args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
+    # * other data path for sen
+    else:
+        args.subseqs_path = f"{args.data_dir}{args.data_name}_subseq_{args.subseq_len}.txt"
+        args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_{args.subseq_len}.pkl"
+        args.graph_path = f"{args.data_dir}{args.data_name}_graph_{args.subseq_len}.pkl"
 
     pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
     pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')
@@ -58,7 +64,7 @@ def main() -> None:
         pprint_color(f'>>> Subsequence data already exists in "{args.subseqs_path}". Skip DS operation.')
 
     # * training data: train_user_seq is a list of subsequences.
-    train_user_seq = get_user_seqs(args.subseqs_path)
+    train_user_seq = get_user_seqs(args.subseqs_path if not args.graph_split else f"../data/{args.data_name}_1.txt")
     # * valid and test data: test_user_seq is a list of original sequences.
     test_user_seq = get_user_seqs(args.seqs_path)
 
@@ -86,8 +92,6 @@ def main() -> None:
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
     args.rating_matrix = valid_rating_matrix
 
-    # args.subseqs_path = "../subseq/Beauty_subseq_5.txt"
-    # args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
     args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
     args.num_subseq_id = len(args.subseq_id_map)
 
