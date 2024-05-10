@@ -93,6 +93,7 @@ def parse_args() -> argparse.Namespace:
         "--gcn_mode", type=str, default="None", help="gcn mode", choices=["None", "global", "batch", "batch_gcn"]
     )
     parser.add_argument("--do_test", action="store_true")
+    parser.add_argument("--min_test_epoch", default=25, type=int)
     parser.add_argument("--scheduler", default="None", type=str, help="scheduler")
     parser.add_argument("--milestones", nargs="?", default="[50,75,100]", help="milestones for MultiStepLR")
     parser.add_argument("--gamma", default=0.1, type=float, help="gamma for MultiStepLR")

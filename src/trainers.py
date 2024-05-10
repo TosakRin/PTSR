@@ -53,15 +53,17 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
         args.rating_matrix = valid_rating_matrix
         trainer.train(epoch)
         # * evaluate on NDCG@20
-        scores, _ = trainer.valid(epoch)
-        early_stopping(np.array(scores[-1:]), trainer.model)
+        if args.do_eval:
+            scores, _ = trainer.valid(epoch)
+            early_stopping(np.array(scores[-1:]), trainer.model)
+            if early_stopping.early_stop:
+                pprint_color(">>> Early stopping")
+                break
+
         # * test on while training
-        if args.do_test:
+        if args.do_test and epoch > args.min_test_epoch:
             args.rating_matrix = test_rating_matrix
             _, _ = trainer.test(epoch, full_sort=True)
-        if early_stopping.early_stop:
-            pprint_color(">>> Early stopping")
-            break
 
 
 def do_eval(trainer, test_rating_matrix):
