@@ -47,8 +47,8 @@ def main() -> None:
 
     save_time = time.strftime("%m%d-%H%M%S")
     args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
-    log_path = os.path.join(args.log_dir, args.save_name)
-    tb_path = os.path.join("runs", args.save_name)
+    log_path = os.path.join(args.log_root, args.log_dir, args.save_name)
+    tb_path = os.path.join(args.log_root, args.tb_dir, args.save_name)
     args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
 
     # * construct supervisory signals via DS(·) operation

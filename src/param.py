@@ -19,7 +19,9 @@ def parse_args() -> argparse.Namespace:
     # * system args
     parser.add_argument("--data_dir", default="../data/", type=str)
     parser.add_argument("--output_dir", default="ckpt", type=str)
+    parser.add_argument("--log_root", default=".", type=str)
     parser.add_argument("--log_dir", default="logs", type=str)
+    parser.add_argument("--tb_dir", default="runs", type=str)
     parser.add_argument("--data_name", default="Sports_and_Outdoors", type=str)
     parser.add_argument("--encoder", default="SAS", type=str)  # * {"SAS":SASRec,"GRU":GRU4Rec}
     parser.add_argument("--do_eval", action="store_true")
