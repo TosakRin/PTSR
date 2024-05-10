@@ -19,6 +19,7 @@ from scipy.sparse import csr_matrix  # type: ignore
 from torch import Tensor
 
 from cprint import pprint_color
+from param import args
 
 
 def set_seed(seed: int):
@@ -162,7 +163,7 @@ class EarlyStopping:
             self.save_checkpoint(score, model)
         elif self.compare(score):
             self.counter += 1
-            pprint_color(f">>> EarlyStopping counter: {self.counter} out of {self.patience}")
+            args.logger.debug(f">>> EarlyStopping counter: {self.counter} out of {self.patience}")
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -173,7 +174,7 @@ class EarlyStopping:
     def save_checkpoint(self, score, model):
         """Saves model when validation loss decrease."""
         if self.verbose:
-            pprint_color(">>> Validation score increased.  Saving model ...")
+            args.logger.debug(">>> Validation score increased.  Saving model ...")
         torch.save(model.state_dict(), self.checkpoint_path)
         self.score_min = score
 
