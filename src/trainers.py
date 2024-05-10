@@ -126,10 +126,11 @@ class Trainer:
         self.scheduler = self.get_scheduler(self.optim_adam)
 
         # * prepare padding subseq for subseq embedding update
-        self.all_subseq_id, self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
-        self.all_subseq = self.all_subseq.to(self.device)
+        self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
+        # self.all_subseq = self.all_subseq.to(self.device)
+        # self.pad_mask = (self.all_subseq > 0).to(self.device)  # todo: 显存
+        self.pad_mask = self.all_subseq > 0
 
-        self.pad_mask = (self.all_subseq > 0).to(self.device)  # todo: 显存
         self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)  # todo: 可以抽出来
 
         self.best_scores = {
@@ -311,12 +312,12 @@ class Trainer:
         all_subseq = all_subseq[sorted_indices]
         # * check if ID is always increasing
         # print(torch.all(torch.diff(all_subseq_ids) > 0))
-
-        id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
-        return all_subseq_ids, all_subseq
+        # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
+        return all_subseq
 
     def subseq_embed_update(self, epoch):
-        # todo: 使用 item_embeddings 吗? 不用强化后的 all_item_emb 吗 -- 梯度爆炸
+        self.model.item_embeddings.cpu()
+        self.model.subseq_embeddings.cpu()
         subseq_emb = self.model.item_embeddings(self.all_subseq)
         subseq_emb_avg: Tensor = (
             torch.sum(subseq_emb * self.pad_mask.unsqueeze(-1), dim=1) / self.num_non_pad
@@ -328,6 +329,9 @@ class Trainer:
         self.model.subseq_embeddings.weight.data = (
             subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.subseq_embeddings.weight.data) / 2
         )  # todo: 这样可以实现快速收敛
+
+        self.model.item_embeddings.to(self.device)
+        self.model.subseq_embeddings.to(self.device)
 
 
 class ICSRecTrainer(Trainer):
