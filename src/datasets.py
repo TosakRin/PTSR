@@ -281,7 +281,7 @@ def build_dataloader(user_seq, loader_type):
         dataset,
         sampler=sampler(dataset),
         batch_size=args.batch_size,
-        num_workers=1,
+        num_workers=0,
         pin_memory=True,
-        prefetch_factor=1,
+        persistent_workers=True
     )
