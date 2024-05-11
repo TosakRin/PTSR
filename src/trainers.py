@@ -37,9 +37,9 @@ from tqdm.rich import tqdm
 
 from cprint import pprint_color
 from graph import Graph
-from loss import EmbLoss, cicl_loss, ficl_loss
+from loss import EmbLoss, cicl_loss
 from metric import get_metric, ndcg_k, recall_at_k
-from models import GCN, GRUEncoder, KMeans, SASRecModel
+from models import GCN, GRUEncoder, SASRecModel
 from param import args
 from utils import EarlyStopping
 
@@ -102,16 +102,6 @@ class Trainer:
             # self.reg_loss.cuda()
         self.graph = Graph(args.graph_path)
         self.model.graph = self.graph
-        if "f" in args.cl_mode:
-            cluster = KMeans(
-                num_cluster=args.intent_num,
-                seed=1,
-                hidden_size=64,
-                gpu_id=args.gpu_id,
-                device=self.device,
-            )
-            self.clusters: list[KMeans] = [cluster]
-            self.clusters_t: list[list[KMeans]] = [self.clusters]
 
         self.train_dataloader, self.cluster_dataloader, self.eval_dataloader, self.test_dataloader = (
             train_dataloader,
@@ -337,10 +327,6 @@ class Trainer:
 class ICSRecTrainer(Trainer):
 
     def train_epoch(self, epoch, cluster_dataloader, train_dataloader):
-        # * contrastive mode: {'cf':coarse-grain+fine-grain,'c':only coarse-grain,'f':only fine-grain}
-        if args.cl_mode in ["cf", "f"]:
-            with torch.no_grad():
-                self.cluster_epoch(cluster_dataloader)
         self.model.train()
         rec_avg_loss, joint_avg_loss, icl_losses = 0.0, 0.0, 0.0
         batch_num = len(train_dataloader)
@@ -418,50 +404,6 @@ class ICSRecTrainer(Trainer):
 
         if (epoch + 1) % args.log_freq == 0:
             args.logger.info(str(post_fix))
-
-    def cluster_epoch(self, cluster_dataloader):
-        """
-        cluster datalooader contains
-        5 tensors: user_id, input_id, target_pos_1, target_pos_2, anwser
-        user_id, answer SHAPE: batch_size x 1
-        input_id, target_pos_1, target_pos_2 SHAPE: batch_size x seq_len
-
-        Args:
-            cluster_dataloader (Dataloader):
-        """
-        assert cluster_dataloader is not None
-        self.model.eval()
-        kmeans_training_data = []
-        for _, (rec_batch) in tqdm(
-            enumerate(cluster_dataloader),
-            total=len(cluster_dataloader),
-            desc=f"{args.save_name} | Device: {args.gpu_id} | Cluster Training",
-            leave=False,
-            dynamic_ncols=True,
-        ):
-            rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            _, _, subsequence, _, _, _ = rec_batch
-            # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-            seq_output_last_layer = self.model(subsequence)
-            # * SHAPE: [Batch_size, Hidden_size] -> [256, 64], use the last item as output.
-            seq_output_last_item = seq_output_last_layer[:, -1, :]
-            # * detach: Returns a new Tensor, detached from the current graph. The result will never require gradient.
-            seq_output_last_item = seq_output_last_item.detach().cpu().numpy()
-            kmeans_training_data.append(seq_output_last_item)
-
-        # * SHAPE: [SubSeq_num, Hidden_size] -> [131413, 64]
-        kmeans_training_data = np.concatenate(kmeans_training_data, axis=0)
-        kmeans_training_data_t = [kmeans_training_data]
-
-        # * Cluster after encoding
-        for i, clusters in enumerate(self.clusters_t):
-            for j, cluster in enumerate(clusters):
-                cluster.train(kmeans_training_data_t[i])
-                self.clusters_t[i][j] = cluster
-
-        del kmeans_training_data
-        del kmeans_training_data_t
-        gc.collect()
 
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
         with torch.no_grad():

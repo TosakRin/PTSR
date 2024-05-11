@@ -1,8 +1,6 @@
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-
-from models import KMeans
 from param import args
 from utils import mask_correlated_samples, mask_correlated_samples_
 
@@ -76,43 +74,6 @@ def cicl_loss(coarse_intents: list[Tensor], target_item):
         target_item[:, -1],
     )
     return nn.CrossEntropyLoss()(sem_nce_logits, sem_nce_labels)
-
-
-def ficl_loss(subseq_pair: list[Tensor], clusters_t: list[KMeans]):
-    """ "
-    Calculates the FICL (Federated InfoNCE Contrastive Learning) loss.
-
-    Args:
-        sequences (list[Tensor]): subsequence pair with the same target item. subseq SHAPE: [batch_size, seq_len, hidden_size]
-        clusters_t (list[KMeans]): A list of clusters.
-
-    Returns:
-        torch.Tensor: The FICL loss.
-
-    """
-    for i, subseq in enumerate(subseq_pair):
-        coarse_intent = subseq[:, -1, :]
-        intent_n = coarse_intent.view(-1, coarse_intent.shape[-1])
-        intent_n = intent_n.detach().cpu().numpy()
-        intent_id, fined_intent = clusters_t[0].query(intent_n)
-
-        fined_intent = fined_intent.view(fined_intent.shape[0], -1)
-        a, b = info_nce(
-            coarse_intent.view(coarse_intent.shape[0], -1),
-            fined_intent,
-            args.temperature,
-            coarse_intent.shape[0],
-            sim_way=args.sim,
-            intent_id=intent_id,
-        )
-        loss_n = nn.CrossEntropyLoss()(a, b)
-
-        if i == 0:
-            ficl_loss = loss_n
-        else:
-            ficl_loss += loss_n
-
-    return ficl_loss
 
 
 class EmbLoss(nn.Module):

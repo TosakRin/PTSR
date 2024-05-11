@@ -7,7 +7,6 @@
 #
 from typing import Union
 
-import faiss  # type: ignore
 import numpy as np
 import torch
 from torch import Tensor, nn
@@ -15,95 +14,6 @@ from torch import Tensor, nn
 from cprint import pprint_color
 from modules import Encoder, LayerNorm, LigthGCNLayer, NGCFLayer
 from param import args
-
-
-class KMeans:
-    centroids: Tensor
-
-    def __init__(
-        self, num_cluster: int, seed: int, hidden_size: int, gpu_id: int = 0, device: Union[torch.device, str] = "cpu"
-    ):
-        """KMeans clustering.
-
-        Args:
-            num_cluster (int): number of clusters
-            seed (int): random seed
-            hidden_size (int): hidden size of embedding
-        """
-        pprint_color(">>> Initialize KMeans Clustering")
-        self.seed = seed
-        self.num_cluster = num_cluster
-        self.max_points_per_centroid = 4096
-        self.min_points_per_centroid = 0
-        self.gpu_id = gpu_id
-        self.device = device
-        self.hidden_size = hidden_size
-        self.clus, self.index = self.__init_cluster(self.hidden_size)
-
-    def __init_cluster(
-        self,
-        hidden_size: int,
-        verbose: bool = False,
-        niter: int = 20,
-        nredo: int = 5,
-        max_points_per_centroid: int = 4096,
-        min_points_per_centroid: int = 0,
-    ):
-        """Initialize the clustering.
-
-        Args:
-            hidden_size (int): hidden size of embedding
-            verbose (bool, optional): verbose during training?
-            niter (int, optional): clustering iterations. Defaults to 20.
-            nredo (int, optional): redo clustering this many times and keep best. Defaults to 5.
-            max_points_per_centroid (int, optional): to limit size of dataset. Defaults to 4096.
-            min_points_per_centroid (int, optional): otherwise you get a warning. Defaults to 0.
-
-        Returns:
-            tuple[Clustering, GpuIndexFlatL2]: clustering and index
-        """
-        pprint_color(
-            f">>> cluster train iterations: {niter}",
-        )
-        clus = faiss.Clustering(hidden_size, self.num_cluster)
-        clus.verbose = verbose
-        clus.niter = niter
-        clus.nredo = nredo
-        clus.seed = self.seed
-        clus.max_points_per_centroid = max_points_per_centroid
-        clus.min_points_per_centroid = min_points_per_centroid
-
-        res = faiss.StandardGpuResources()
-        res.noTempMemory()
-        cfg = faiss.GpuIndexFlatConfig()
-        cfg.useFloat16 = False
-        cfg.device = self.gpu_id
-        index = faiss.GpuIndexFlatL2(res, hidden_size, cfg)
-        pprint_color(f">>> FAISS Device: {faiss.get_num_gpus()}")
-        return clus, index
-
-    def train(self, x: np.ndarray):
-        """train to get centroids. Save to `self.centroids`.
-
-        Args:
-            x (np.ndarray): [131413, 64] -> [subseq_num, hidden_size]
-        """
-        if x.shape[0] > self.num_cluster:
-            self.clus.train(x, self.index)
-        # * get cluster centroids. Shape: [num_cluster, hidden_size] -> [256, 64]
-        centroids = faiss.vector_to_array(self.clus.centroids).reshape(self.num_cluster, self.hidden_size)
-        # * convert to cuda Tensors for broadcast
-        centroids = torch.Tensor(centroids).to(self.device)
-        self.centroids = nn.functional.normalize(centroids, p=2, dim=1)
-
-    def query(self, x):
-        # self.index.add(x)
-        D, I = self.index.search(x, 1)  # for each sample, find cluster distance and assignments
-        seq2cluster = [int(n[0]) for n in I]
-        # pprint_color("cluster number:", self.num_cluster,"cluster in batch:", len(set(seq2cluster)))
-        seq2cluster = torch.LongTensor(seq2cluster).to(self.device)
-        return seq2cluster, self.centroids[seq2cluster]
-
 
 class SASRecModel(nn.Module):
     def __init__(self):
