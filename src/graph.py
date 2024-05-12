@@ -302,7 +302,9 @@ class Graph:
         mat = (mat != 0) * 1.0
         # * A^ = A + I
         # todo: https://github.com/gusye1234/LightGCN-PyTorch/blob/master/code/dataloader.py
-        mat = (mat + sp.eye(mat.shape[0])) * 1.0
+        # mat = (mat + sp.eye(mat.shape[0])) * 1.0
+        mat = mat + sp.eye(mat.shape[0])
+        mat = (mat != 0) * 1.0
         # * D^-0.5 * A^ * D^-0.5
         mat = self.norm_adj(mat)
 
