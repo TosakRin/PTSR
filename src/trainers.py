@@ -61,7 +61,7 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
                 break
 
         # * test on while training
-        if args.do_test and epoch > args.min_test_epoch:
+        if args.do_test and epoch >= args.min_test_epoch:
             args.rating_matrix = test_rating_matrix
             _, _ = trainer.test(epoch, full_sort=True)
 
