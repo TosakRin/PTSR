@@ -80,9 +80,6 @@ class Trainer:
 
         self.model = torch.compile(model) if args.compile else model
         self.gcn = GCN()
-        # self.predictor = nn.Linear(args.hidden_size, args.hidden_size)
-        # nn.init.xavier_normal_(self.predictor.weight)
-        # self.reg_loss = EmbLoss()
         if cuda_condition:
             self.model.cuda()
             self.gcn.cuda()
