@@ -1,14 +1,3 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-03-18 15:52:01
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-04-01 02:45:40
- @FilePath     : /ICSRec/src/trainers.py
- @Description  :
- @/
-"""
-
 # -*- coding: utf-8 -*-
 #
 # Copyright (c) 2022 salesforce.com, inc.

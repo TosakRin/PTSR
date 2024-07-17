@@ -1,14 +1,3 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-03-26 13:33:18
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-03-28 16:03:41
- @FilePath     : /ICSRec/src/graph.py
- @Description  :
- @/
-"""
-
 import os
 import pickle
 from ast import literal_eval

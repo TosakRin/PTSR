@@ -1,14 +1,3 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-03-18 15:52:01
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-03-23 20:20:39
- @FilePath     : /ICSRec/src/datasets.py
- @Description  : Dataset: Including subsequence generation (DS), target-item | subsequence set generation (Generate_tag), and dataset class (RecWithContrastiveLearningDataset).
- @/
-"""
-
 # -*- coding: utf-8 -*-
 #
 # Copyright (c) 2022 salesforce.com, inc.

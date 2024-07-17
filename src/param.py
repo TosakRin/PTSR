@@ -1,14 +1,3 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-03-21 18:16:35
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-03-28 22:42:03
- @FilePath     : /ICSRec/src/param.py
- @Description  :
- @/
-"""
-
 import argparse
 
 from cprint import pprint_color, print_color
