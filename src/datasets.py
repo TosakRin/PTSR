@@ -6,7 +6,6 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 
-import copy
 import random
 
 import numpy as np
@@ -43,9 +42,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         )
         self.get_pad_user_seq()
 
-    def _data_sample_rec_task(
-        self, user_id: int, items: list[int], input_ids: list[int], target_pos, answer: list[int]
-    ):
+    def _data_sample_rec_task(self, user_id: int, input_ids: list[int], target_pos, answer: list[int]):
         """post-processing the data sample to Tensor for the RecWithContrastiveLearningDataset from __getitem__:
 
         1. padding
@@ -69,7 +66,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         copied_input_ids = [0] * pad_len + copied_input_ids
         copied_input_ids = copied_input_ids[-self.max_len :]  #
         assert len(copied_input_ids) == self.max_len
-        if isinstance(target_pos, tuple):  # * train and cluster
+        if isinstance(target_pos, tuple):  # * train and graph
             pad_len_1 = self.max_len - len(target_pos[1])
             target_pos_1 = [0] * pad_len + target_pos[0]
             target_pos_2 = [0] * pad_len_1 + target_pos[1]
@@ -104,30 +101,6 @@ class RecWithContrastiveLearningDataset(Dataset):
             )
         )
 
-    def _add_noise_interactions(self, items: list[int]):
-        """Add negative interactions to the sequence for robustness analysis.
-
-        Args:
-            items (list[int]): negative items as noise
-
-        Returns:
-            _type_: _description_
-        """
-        copied_sequence = copy.deepcopy(items)
-        insert_nums = max(int(args.noise_ratio * len(copied_sequence)), 0)
-        if insert_nums == 0:
-            return copied_sequence
-        insert_idx = random.choices(list(range(len(copied_sequence))), k=insert_nums)
-        inserted_sequence = []
-        for index, item in enumerate(copied_sequence):
-            if index in insert_idx:
-                item_id = random.randint(1, args.item_size - 2)
-                while item_id in copied_sequence:
-                    item_id = random.randint(1, args.item_size - 2)
-                inserted_sequence += [item_id]
-            inserted_sequence += [item]
-        return inserted_sequence
-
     def __getitem__(self, index: int):
         """Get the data sample for the RecWithContrastiveLearningDataset.
 
@@ -160,11 +133,11 @@ class RecWithContrastiveLearningDataset(Dataset):
             tuple(Tensor):
         """
         user_id = index
-        if args.loader == "old":
+        if args.loader_type == "old":
             user_seq = self.user_seq[index]
-            assert self.data_type in {"train", "valid", "test", "cluster"}
+            assert self.data_type in {"train", "valid", "test", "graph"}
 
-            if self.data_type in ["train", "cluster"]:
+            if self.data_type in ["train", "graph"]:
                 # * Remember that Training data (items) is subsequence
                 input_ids: list[int] = user_seq[:-3]
                 target_pos = user_seq[1:-2]
@@ -193,27 +166,28 @@ class RecWithContrastiveLearningDataset(Dataset):
                 target_pos = user_seq[1:-1]
                 answer = [user_seq[-2]]
             else:
-                items_with_noise = self._add_noise_interactions(user_seq)
-                input_ids = items_with_noise[:-1]
-                target_pos = items_with_noise[1:]
-                answer = [items_with_noise[-1]]
+                input_ids = user_seq[:-1]
+                target_pos = user_seq[1:]
+                answer = [user_seq[-1]]
 
             # * Sample the data
-            if self.data_type in ["train", "cluster"]:
+            if self.data_type in ["train", "graph"]:
                 train_target_pos = (target_pos, target_pos_)
-                return self._data_sample_rec_task(user_id, user_seq, input_ids, train_target_pos, answer)
+                return self._data_sample_rec_task(user_id, input_ids, train_target_pos, answer)
             if self.data_type == "valid":
-                return self._data_sample_rec_task(user_id, user_seq, input_ids, target_pos, answer)
-            return self._data_sample_rec_task(user_id, items_with_noise, input_ids, target_pos, answer)
-        elif args.loader == "new":
-            # * new loader: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
+                return self._data_sample_rec_task(user_id, input_ids, target_pos, answer)
+            return self._data_sample_rec_task(user_id, input_ids, target_pos, answer)
+        elif args.loader_type == "new":
+            # * new loader_type: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
             pad_user_seq = self.pad_user_seq[index]
-            if self.data_type in ["train", "cluster"]:
+            if self.data_type in ["train", "graph"]:
                 user_seq = self.user_seq[index]
                 input_ids = pad_user_seq[:-3]
                 target_pos = pad_user_seq[1:-2]
                 answer = target_pos[-1]
-                subseqs_id = args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]] if self.data_type == "cluster" else []
+                subseqs_id = (
+                    args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]] if self.data_type == "graph" else []
+                )
                 return (
                     torch.tensor(subseqs_id, dtype=torch.long),
                     torch.tensor(user_id, dtype=torch.long),
@@ -227,7 +201,6 @@ class RecWithContrastiveLearningDataset(Dataset):
                 target_pos = pad_user_seq[2:-1]
                 answer = [pad_user_seq[-2]]
             else:
-                # items_with_noise = self._add_noise_interactions(pad_user_seq)
                 items_with_noise = pad_user_seq
                 input_ids = items_with_noise[2:-1]
                 target_pos = items_with_noise[3:]
@@ -239,7 +212,7 @@ class RecWithContrastiveLearningDataset(Dataset):
                 torch.tensor(answer, dtype=torch.long),
             )
         else:
-            raise ValueError(f"Invalid loader mode: {args.loader_mode}")
+            raise ValueError(f"Invalid loader_type mode: {args.loader_mode}")
 
     def __len__(self):
         """consider n_view of a single sequence as one sample"""
@@ -261,7 +234,7 @@ class RecWithContrastiveLearningDataset(Dataset):
 
 
 def build_dataloader(user_seq, loader_type):
-    # data_type = loader_type if loader_type != "cluster" else "train"
+    # data_type = loader_type if loader_type != "graph" else "train"
     data_type = loader_type
     sampler = RandomSampler if loader_type == "train" else SequentialSampler
     pprint_color(f">>> Building {loader_type} Dataloader")

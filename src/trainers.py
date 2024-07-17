@@ -6,28 +6,23 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
 
-import gc
 import math
-import time
 import warnings
 from ast import literal_eval
-from collections import OrderedDict
 from typing import Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.optim import Adagrad, AdamW
+from torch.optim import AdamW
 from torch.utils.data.dataloader import DataLoader
 from tqdm import TqdmExperimentalWarning
 from tqdm.rich import tqdm
 
 from cprint import pprint_color
 from graph import Graph
-from loss import EmbLoss, cicl_loss
-from metric import get_metric, ndcg_k, recall_at_k
-from models import GCN, GRUEncoder, SASRecModel
+from metric import ndcg_k, recall_at_k
+from models import GCN, SASRecModel
 from param import args
 from utils import EarlyStopping
 
@@ -35,7 +30,7 @@ warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
 
 def do_train(trainer, valid_rating_matrix, test_rating_matrix):
-    pprint_color(">>> Train ICSRec Start")
+    pprint_color(">>> Train PTSR Start")
     early_stopping = EarlyStopping(args.checkpoint_path, args.latest_path, patience=50)
     for epoch in range(args.epochs):
         args.rating_matrix = valid_rating_matrix
@@ -55,7 +50,7 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
 
 
 def do_eval(trainer, test_rating_matrix):
-    pprint_color(">>> Test ICSRec Start")
+    pprint_color(">>> Test PTSR Start")
     pprint_color(f'>>> Load model from "{args.latest_path}" for test')
     args.rating_matrix = test_rating_matrix
     trainer.load(args.latest_path)
@@ -66,9 +61,9 @@ class Trainer:
 
     def __init__(
         self,
-        model: Union[SASRecModel, GRUEncoder],
+        model: Union[SASRecModel],
         train_dataloader: Optional[DataLoader],
-        cluster_dataloader: Optional[DataLoader],
+        graph_dataloader: Optional[DataLoader],
         eval_dataloader: Optional[DataLoader],
         test_dataloader: DataLoader,
     ) -> None:
@@ -85,25 +80,21 @@ class Trainer:
             self.gcn.cuda()
         self.graph = Graph(args.graph_path)
 
-        self.train_dataloader, self.cluster_dataloader, self.eval_dataloader, self.test_dataloader = (
+        self.train_dataloader, self.graph_dataloader, self.eval_dataloader, self.test_dataloader = (
             train_dataloader,
-            cluster_dataloader,
+            graph_dataloader,
             eval_dataloader,
             test_dataloader,
         )
 
         self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
-        self.optim_adagrad = Adagrad(self.model.adagrad_params, lr=args.lr_adagrad, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
 
         # * prepare padding subseq for subseq embedding update
-        self.all_subseq = self.get_all_pad_subseq(self.cluster_dataloader)
-        # self.all_subseq = self.all_subseq.to(self.device)
-        # self.pad_mask = (self.all_subseq > 0).to(self.device)  # todo: 显存
+        self.all_subseq = self.get_all_pad_subseq(self.graph_dataloader)
         self.pad_mask = self.all_subseq > 0
-
-        self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)  # todo: 可以抽出来
+        self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)
 
         self.best_scores = {
             "valid": {
@@ -178,11 +169,10 @@ class Trainer:
                     new_style=True,
                 )
 
-        (
+        if mode == "test":
             args.logger.critical(f"{self.best_scores[mode]}")
-            if mode == "test"
-            else args.logger.error(f"{self.best_scores[mode]}")
-        )
+        else:
+            args.logger.error(f"{self.best_scores[mode]}")
 
     def save(self, file_name: str):
         """Save the model to the file_name"""
@@ -192,35 +182,6 @@ class Trainer:
     def load(self, file_name: str):
         """Load the model from the file_name"""
         self.model.load_state_dict(torch.load(file_name))
-
-    def icsrec_loss(self, subsequence_1, subsequence_2, target_pos_1):
-        # * intent representation learning task\
-        cicl, ficl = 0.0, 0.0
-        coarse_intent_1, coarse_intent_2 = self.model(subsequence_1), self.model(subsequence_2)
-        subseq_pair = [coarse_intent_1, coarse_intent_2]
-        if "c" in args.cl_mode:
-            cicl = cicl_loss(subseq_pair, target_pos_1)
-        if "f" in args.cl_mode:
-            ficl = ficl_loss(subseq_pair, self.clusters_t[0])
-        return cicl, ficl
-
-    def recon_loss(self, subseq_emb, item_emb, subseq_id, item_id):
-        with torch.no_grad():
-            subseq_target, item_target = subseq_emb.clone(), item_emb.clone()
-            subseq_target.detach()
-            item_target.detach()
-            subseq_target = F.dropout(subseq_target, 0.5)
-            item_target = F.dropout(item_target, 0.5)
-        subseq_online, item_online = self.predictor(subseq_emb), self.predictor(item_emb)
-        subseq_online = subseq_online[subseq_id, :]
-        item_online = item_online[item_id, :]
-        subseq_target = subseq_target[subseq_id, :]
-        item_target = item_target[item_id, :]
-        loss_si = 1 - F.cosine_similarity(subseq_online, item_target.detach(), dim=-1).mean()
-        loss_is = 1 - F.cosine_similarity(item_online, subseq_target.detach(), dim=-1).mean()
-        reg_loss = self.reg_loss(subseq_emb, item_emb)
-        # print(f"loss_si: {loss_si}, loss_is: {loss_is}, reg_loss: {reg_loss}")
-        return (loss_si + loss_is).mean() + reg_loss.item()
 
     @staticmethod
     def get_scheduler(optimizer):
@@ -298,23 +259,24 @@ class Trainer:
         # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
         # self.model.subseq_embeddings = subseq_emb_avg
 
+        # * accelerate convergence
         self.model.subseq_embeddings.weight.data = (
             subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.subseq_embeddings.weight.data) / 2
-        )  # todo: 这样可以实现快速收敛
+        )
 
         self.model.item_embeddings.to(self.device)
         self.model.subseq_embeddings.to(self.device)
 
 
-class ICSRecTrainer(Trainer):
+class PTSRTrainer(Trainer):
 
-    def train_epoch(self, epoch, cluster_dataloader, train_dataloader):
+    def train_epoch(self, epoch, train_dataloader):
         self.model.train()
         if epoch == 0:
             train_matrix = self.graph.edge_random_dropout(self.graph.train_matrix, args.dropout_rate)
             self.graph.torch_A = self.graph.get_torch_adj(train_matrix)
 
-        rec_avg_loss, joint_avg_loss, icl_losses = 0.0, 0.0, 0.0
+        rec_avg_loss = 0.0
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
@@ -338,7 +300,7 @@ class ICSRecTrainer(Trainer):
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            subseq_id, _, subsequence_1, target_pos_1, subsequence_2, target_id = rec_batch
+            _, _, subsequence_1, target_pos_1, _, _ = rec_batch
 
             # * GCN update branch
             if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
@@ -351,33 +313,15 @@ class ICSRecTrainer(Trainer):
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
-            cicl_loss, ficl_loss = 0.0, 0.0
-            if args.cl_mode in ["c", "f", "cf"]:
-                cicl_loss, ficl_loss = self.icsrec_loss(subsequence_1, subsequence_2, target_pos_1)
-
-            icl_loss = args.lambda_0 * cicl_loss + args.beta_0 * ficl_loss
-            joint_loss = args.rec_weight * rec_loss + icl_loss
-            if args.recon:
-                joint_loss += self.recon_loss(self.model.all_subseq_emb, self.model.all_item_emb, subseq_id, target_id)
-
             # self.optim_adagrad.zero_grad()
             self.optim_adam.zero_grad()
-            joint_loss.backward()
+            rec_loss.backward()
             # self.optim_adagrad.step()
             self.optim_adam.step()
 
             rec_avg_loss += rec_loss.item()
-            if not isinstance(icl_loss, float):
-                icl_losses += icl_loss.item()
-            else:
-                icl_losses += icl_loss
-            joint_avg_loss += joint_loss.item()
             if args.batch_loss:
                 args.tb.add_scalar("batch_loss/rec_loss", rec_loss.item(), epoch * batch_num + batch_i, new_style=True)
-                # args.tb.add_scalar("batch_train/icl_loss", icl_loss.item(), epoch * batch_num + batch_i, new_style=True)
-                args.tb.add_scalar(
-                    "batch_loss/joint_loss", joint_loss.item(), epoch * batch_num + batch_i, new_style=True
-                )
 
         self.scheduler.step()
         # * print & write log for each epoch
@@ -385,10 +329,7 @@ class ICSRecTrainer(Trainer):
         post_fix = {
             "Epoch": epoch,
             "lr_adam": round(self.optim_adam.param_groups[0]["lr"], 6),
-            "lr_adagrad": round(self.optim_adagrad.param_groups[0]["lr"], 6),
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
-            "icl_avg_loss": round(icl_losses / batch_num, 4),
-            "joint_avg_loss": round(joint_avg_loss / batch_num, 4),
         }
 
         for key, value in post_fix.items():
@@ -460,7 +401,7 @@ class ICSRecTrainer(Trainer):
     def train(self, epoch) -> None:
         assert self.train_dataloader is not None
         args.mode = "train"
-        self.train_epoch(epoch, self.cluster_dataloader, self.train_dataloader)
+        self.train_epoch(epoch, self.train_dataloader)
 
     def valid(self, epoch) -> tuple[list[float], str]:
         assert self.eval_dataloader is not None

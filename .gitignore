@@ -190,3 +190,8 @@ events.out.tfevents.*
 src/*.sh
 IOCRec/
 CoSeRec
+
+amazon/*
+src/case/*
+Color.py
+src/scripts/*

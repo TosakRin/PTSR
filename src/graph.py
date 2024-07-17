@@ -249,8 +249,7 @@ class Graph:
         self.adj_path = adj_path
         if not os.path.exists(self.adj_path):
             raise FileNotFoundError(f'adjacency matrix not found in "{self.adj_path}"')
-        else:
-            self.load_graph()
+        self.load_graph()
 
     def norm_adj(self, mat: sp.csr_matrix) -> sp.coo_matrix:
         """
@@ -324,7 +323,7 @@ class Graph:
         Returns:
             - coo_matrix: New sparse matrix with dropout applied.
         """
-        if not (0 <= dropout_rate <= 1):
+        if not 0 <= dropout_rate <= 1:
             raise ValueError("Dropout rate must be between 0 and 1.")
 
         new_sparse_matrix = sparse_matrix.data.copy()
@@ -339,7 +338,6 @@ class Graph:
         )
 
         return new_sparse_matrix
-
 
     @staticmethod
     def edge_random_fill(matrix, rate=1e-3):

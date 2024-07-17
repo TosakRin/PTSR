@@ -5,13 +5,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
-from typing import Union
 
-import numpy as np
 import torch
 from torch import Tensor, nn
 
-from cprint import pprint_color
 from modules import Encoder, LayerNorm, LigthGCNLayer, NGCFLayer
 from param import args
 
@@ -134,49 +131,6 @@ class SASRecModel(nn.Module):
             raise ValueError(f"Invalid gcn_mode: {args.gcn_mode}")
         return torch.matmul(user_seq_emb, test_item_emb.transpose(0, 1))
 
-
-# GRU Encoder
-class GRUEncoder(nn.Module):
-    r"""GRU4Rec is a model that incorporate RNN for recommendation.
-
-    Note:
-
-        Regarding the innovation of this article,we can only achieve the data augmentation mentioned
-        in the paper and directly output the embedding of the item,
-        in order that the generation method we used is common to other sequential models.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-        # load parameters info
-        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
-
-        self.embedding_size = args.hidden_size  # 64
-        self.hidden_size = args.hidden_size * 2  # 128
-        self.num_layers = args.num_hidden_layers - 1  # 1
-        self.dropout_prob = args.hidden_dropout_prob  # 0.3
-
-        # define layers and loss
-        self.emb_dropout = nn.Dropout(args.hidden_dropout_prob)
-        self.gru_layers = nn.GRU(
-            input_size=self.embedding_size,
-            hidden_size=self.hidden_size,
-            num_layers=self.num_layers,
-            bias=False,
-            batch_first=True,
-        )
-        self.dense = nn.Linear(self.hidden_size, self.embedding_size)
-
-    def forward(self, item_seq):
-        item_seq_emb = self.item_embeddings(item_seq)
-        item_seq_emb_dropout = self.emb_dropout(item_seq_emb)
-        gru_output, _ = self.gru_layers(item_seq_emb_dropout)
-        gru_output = self.dense(gru_output)
-        # the embedding of the predicted item, shape of (batch_size, embedding_size)
-        # seq_output = self.gather_indexes(gru_output, item_seq_len - 1)
-        seq_output = gru_output
-        return seq_output
 
 
 class GCN(nn.Module):

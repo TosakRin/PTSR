@@ -3,17 +3,16 @@ import sys
 import time
 from typing import Union
 
-import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from cprint import pprint_color
 from datasets import build_dataloader
-from graph import DS, TargetSubseqs
+from graph import TargetSubseqs
 from logger import set_logger
-from models import GRUEncoder, SASRecModel
+from models import SASRecModel
 from param import args, print_args_info
-from trainers import ICSRecTrainer, do_eval, do_train
+from trainers import PTSRTrainer, do_train
 from utils import (
     check_path,
     get_max_item,
@@ -96,17 +95,17 @@ def main() -> None:
     args.subseq_id_map, _ = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
     args.num_subseq_id = len(args.subseq_id_map)
 
-    # * cluster -> GNN, train -> SASRec
+    # * graph -> GNN, train -> SASRec
     train_dataloader = build_dataloader(train_user_seq, "train")
-    cluster_dataloader = build_dataloader(graph_user_seq, "cluster")
+    graph_dataloader = build_dataloader(graph_user_seq, "graph")
     eval_dataloader = build_dataloader(test_user_seq, "valid")
     test_dataloader = build_dataloader(test_user_seq, "test")
 
     if args.encoder == "SAS":
         model: Union[SASRecModel, GRUEncoder] = SASRecModel()
-    elif args.encoder == "GRU":
-        model = GRUEncoder()
-    trainer = ICSRecTrainer(model, train_dataloader, cluster_dataloader, eval_dataloader, test_dataloader)
+    else:
+        raise ValueError("args.encoder invalid.")
+    trainer = PTSRTrainer(model, train_dataloader, graph_dataloader, eval_dataloader, test_dataloader)
 
     do_train(trainer, valid_rating_matrix, test_rating_matrix)
     args.tb.close()
