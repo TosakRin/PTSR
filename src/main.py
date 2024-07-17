@@ -25,13 +25,7 @@ from utils import (
 )
 
 
-def main() -> None:
-    set_seed(args.seed)
-    check_path(args.output_dir)
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-    args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
-    pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
-
+def set_path() -> None:
     # * data path
     args.seqs_path = f"../data/{args.data_name}.txt"
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
@@ -51,23 +45,13 @@ def main() -> None:
     pprint_color(f'==>> args.subseqs_target_path: "{args.subseqs_target_path}"')
     pprint_color(f'==>> args.graph_path         : "{args.graph_path}"')
 
+
+def set_log() -> None:
     save_time = time.strftime("%m%d-%H%M%S")
     args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
+    args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
     log_path = os.path.join(args.log_root, args.log_dir, args.save_name)
     tb_path = os.path.join(args.log_root, args.tb_dir, args.save_name)
-    args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
-
-    # * construct supervisory signals via DS(·) operation
-    if not os.path.exists(args.subseqs_path):
-        DS(args.seqs_path, args.subseqs_path, args.max_seq_length)
-    else:
-        pprint_color(f'>>> Subsequence data already exists in "{args.subseqs_path}". Skip DS operation.')
-
-    # * training data: train_user_seq is a list of subsequences.
-    train_user_seq = get_user_seqs(args.subseqs_path if not args.graph_split else f"../data/{args.data_name}_1.txt")
-    # * valid and test data: test_user_seq is a list of original sequences.
-    test_user_seq = get_user_seqs(args.seqs_path)
-
     max_item = get_max_item(args.seqs_path)
     num_users = get_num_users(args.seqs_path)
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
@@ -81,6 +65,23 @@ def main() -> None:
     args.logger.info(args_info)
     args.tb = SummaryWriter(log_dir=tb_path)
     write_cmd(f"{args.save_name} | {' '.join(sys.argv)}\n")
+    return num_users
+
+
+def main() -> None:
+    set_seed(args.seed)
+    check_path(args.output_dir)
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
+    pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
+    set_path()
+    num_users = set_log()
+
+    # * training data: train_user_seq is a list of subsequences.
+    train_user_seq = get_user_seqs(args.subseqs_path if not args.graph_split else f"../data/{args.data_name}.txt")
+    # * valid and test data: test_user_seq is a list of original sequences.
+    test_user_seq = get_user_seqs(args.seqs_path)
+    graph_user_seq = get_user_seqs(args.subseqs_path)
 
     # * set item score in train set to `0` in validation
     valid_rating_matrix = get_rating_matrix(
@@ -92,13 +93,12 @@ def main() -> None:
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
     args.rating_matrix = valid_rating_matrix
 
-    args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
+    args.subseq_id_map, _ = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
     args.num_subseq_id = len(args.subseq_id_map)
 
     # * cluster -> GNN, train -> SASRec
-    cluster_user_seq = get_user_seqs(args.subseqs_path)
     train_dataloader = build_dataloader(train_user_seq, "train")
-    cluster_dataloader = build_dataloader(cluster_user_seq, "cluster")
+    cluster_dataloader = build_dataloader(graph_user_seq, "cluster")
     eval_dataloader = build_dataloader(test_user_seq, "valid")
     test_dataloader = build_dataloader(test_user_seq, "test")
 
