@@ -313,6 +313,63 @@ class Graph:
         self.torch_A = self.get_torch_adj(train_matrix)
 
     @staticmethod
+    def edge_random_dropout(sparse_matrix, dropout_rate=0.1):
+        """
+        Apply random dropout to a scipy.sparse.coo_matrix.
+
+        Parameters:
+            - sparse_matrix (coo_matrix): The original sparse matrix.
+            - dropout_rate (float): The fraction of elements to randomly set to zero.
+
+        Returns:
+            - coo_matrix: New sparse matrix with dropout applied.
+        """
+        if not (0 <= dropout_rate <= 1):
+            raise ValueError("Dropout rate must be between 0 and 1.")
+
+        new_sparse_matrix = sparse_matrix.data.copy()
+        nonzero_indices = np.where(new_sparse_matrix == 1)[0]
+        num_dropout = int(dropout_rate * len(nonzero_indices))
+
+        dropout_indices = np.random.choice(nonzero_indices, num_dropout, replace=False)
+        new_sparse_matrix[dropout_indices] = 0
+
+        new_sparse_matrix = sp.coo_matrix(
+            (new_sparse_matrix.data, (sparse_matrix.row, sparse_matrix.col)), shape=sparse_matrix.shape
+        )
+
+        return new_sparse_matrix
+
+
+    @staticmethod
+    def edge_random_fill(matrix, rate=1e-3):
+        if not 0 <= rate <= 1:
+            raise ValueError("Dropout rate must be between 0 and 1.")
+
+        if not isinstance(matrix, coo_matrix):
+            matrix = coo_matrix(matrix)
+
+        rows, cols = matrix.shape
+
+        all_indices = set(zip(matrix.row, matrix.col))
+        full_indices = set((i, j) for i in range(rows) for j in range(cols))
+        zero_indices = list(full_indices - all_indices)
+
+        num_to_change = int(rate * len(zero_indices))
+
+        # Randomly select zero indices to change to 1
+        selected_indices = np.random.choice(len(zero_indices), size=num_to_change, replace=False)
+        selected_zero_indices = [zero_indices[i] for i in selected_indices]
+
+        new_row = np.array(list(matrix.row) + [idx[0] for idx in selected_zero_indices])
+        new_col = np.array(list(matrix.col) + [idx[1] for idx in selected_zero_indices])
+        new_data = np.array(list(matrix.data) + [1] * num_to_change)
+
+        new_matrix = coo_matrix((new_data, (new_row, new_col)), shape=(rows, cols))
+
+        return new_matrix
+
+    @staticmethod
     def build_graph(
         target_subseqs_dict: dict[int, list[list[int]]],
         subseq_id_map: dict[tuple[int], int],

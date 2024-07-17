@@ -316,6 +316,10 @@ class ICSRecTrainer(Trainer):
 
     def train_epoch(self, epoch, cluster_dataloader, train_dataloader):
         self.model.train()
+        if epoch == 0:
+            train_matrix = self.graph.edge_random_dropout(self.graph.train_matrix, args.dropout_rate)
+            self.graph.torch_A = self.graph.get_torch_adj(train_matrix)
+
         rec_avg_loss, joint_avg_loss, icl_losses = 0.0, 0.0, 0.0
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
