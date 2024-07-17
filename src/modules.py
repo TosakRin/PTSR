@@ -96,10 +96,10 @@ class SelfAttention(nn.Module):
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.out_dropout = nn.Dropout(args.hidden_dropout_prob)
 
-    def transpose_for_scores(self, x):
+    def transpose_multihead(self, x):
         """Transpose to multi head attention shape.
 
-        e.g. [256, 50, 64] -> [256, 50, 2, 32] -> [256, 2, 50, 32]
+        e.g., [256, 50, 64] -> [256, 50, 2, 32] -> [256, 2, 50, 32]
         """
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
@@ -109,14 +109,22 @@ class SelfAttention(nn.Module):
         """Self-attention:
 
         1. multi head attention
-        2. softmax
-        3. dropout
-        4. weighted sum
-        5. linear
-        6. dropout
-        7. residual connection
-        8. layer norm
-        9. return
+            - input + W matrix -> Q K V
+            - Q K V -> Multihead
+            - Q^T * K / sqrt(d_k)
+            - mask attention score
+            - softmax
+            - dropout
+        * No: 2. Add & Norm
+            - weight sum
+            - Layer Norm
+        3. FFN
+            - linear
+            - dropout
+        4. Add & Norm
+            - residual connection
+            - Layer Norm
+        5. return
 
         Args:
             input_tensor (Tensor): [256, 50, 64] -> [batch_size, seq_len, hidden_size]
@@ -131,9 +139,9 @@ class SelfAttention(nn.Module):
         mixed_value_layer = self.value(input_tensor)
 
         # * shape: [batch_size, heads, seq_len, head_size]
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-        key_layer = self.transpose_for_scores(mixed_key_layer)
-        value_layer = self.transpose_for_scores(mixed_value_layer)
+        query_layer = self.transpose_multihead(mixed_query_layer)
+        key_layer = self.transpose_multihead(mixed_key_layer)
+        value_layer = self.transpose_multihead(mixed_value_layer)
 
         # * Take the dot product between "query" and "key" to get the raw attention scores.
         # * formula: Q^T * K / sqrt(d_k)
@@ -183,7 +191,7 @@ class Intermediate(nn.Module):
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
 
     def forward(self, input_tensor):
-        """Feed forward network.
+        """FFN: Feed forward network.
         1. linear
         2. activation
         3. linear
@@ -234,9 +242,9 @@ class Encoder(nn.Module):
         """
 
         Args:
-            hidden_states (Tensor): [256, 50, 64] -> [batch_size, seq_len, hidden_size]
+            hidden_states (Tensor): input. [256, 50, 64] -> [batch_size, seq_len, hidden_size]
             attention_mask (Tensor): [256, 1, 50, 50] -> [batch_size, 1, seq_len, seq_len]
-            output_all_encoded_layers (bool, optional): if True, return all layers. Else, return the last layer. Defaults to True.
+            output_all_encoded_layers (bool, optional): if True, return output of all layers. Else, return the last layer only. Defaults to True.
 
         Returns:
             list[Tensor]: list of hidden states of all layers or the last layer. SHAPE: [Layer_num, batch_size, seq_len, hidden_size] or [1, batch_size, seq_len, hidden_size
