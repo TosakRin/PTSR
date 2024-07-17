@@ -395,6 +395,12 @@ class ICSRecTrainer(Trainer):
             if "loss" in key:
                 args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
 
+        # metadata = [f"Item_{i}" for i in range(args.item_size)]
+        # args.tb.add_embedding(self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
+        # args.tb.add_embedding(self.model.all_item_emb, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
+        # metadata = [f"Subseq_{i}" for i in range(args.num_subseq_id)]
+        # args.tb.add_embedding(self.model.all_subseq_emb, metadata=metadata, tag="SubseqEmbeddings", global_step=epoch)
+
         if (epoch + 1) % args.log_freq == 0:
             args.logger.info(str(post_fix))
 
