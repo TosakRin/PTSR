@@ -74,7 +74,7 @@ class Embeddings(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    """Self-attention module."""
+    """Self-attention module for SASRec."""
 
     def __init__(self):
         super().__init__()

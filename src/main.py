@@ -102,7 +102,7 @@ def main() -> None:
     test_dataloader = build_dataloader(test_user_seq, "test")
 
     if args.encoder == "SAS":
-        model: Union[SASRecModel, GRUEncoder] = SASRecModel()
+        model: Union[SASRecModel] = SASRecModel()
     else:
         raise ValueError("args.encoder invalid.")
     trainer = PTSRTrainer(model, train_dataloader, graph_dataloader, eval_dataloader, test_dataloader)

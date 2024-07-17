@@ -289,8 +289,6 @@ class Graph:
         mat = sp.vstack([sp.hstack([a, mat]), sp.hstack([mat.transpose(), b])])
         mat = (mat != 0) * 1.0
         # * A^ = A + I
-        # todo: https://github.com/gusye1234/LightGCN-PyTorch/blob/master/code/dataloader.py
-        # mat = (mat + sp.eye(mat.shape[0])) * 1.0
         mat = mat + sp.eye(mat.shape[0])
         mat = (mat != 0) * 1.0
         # * D^-0.5 * A^ * D^-0.5
@@ -383,7 +381,7 @@ class Graph:
             num_subseqs (int): _description_
 
         Returns:
-            _type_: _description_
+            coo_matrix: _description_
         """
 
         pprint_color(f"==>> num_items: {num_items}")

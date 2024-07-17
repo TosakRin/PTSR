@@ -17,7 +17,7 @@ from graph import TargetSubseqs
 from param import args
 
 
-class RecWithContrastiveLearningDataset(Dataset):
+class SRDataset(Dataset):
     def __init__(
         self,
         user_seq: list[list[int]],
@@ -27,7 +27,6 @@ class RecWithContrastiveLearningDataset(Dataset):
 
         Args:
             user_seq (list[list[int]]): subseq list in the training phase and original sequence in the validation and testing phase. *Not including User_ID*.
-            test_neg_items (_type_, optional): negative sample in test for sample based ranking. This paper use other sample in the the same batch as negative sample. So always be None.
             data_type (str, optional): dataset type. Defaults to "train". Choice: {"train", "valid", "test"}.
         """
 
@@ -64,7 +63,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         # * input padding and truncating
         pad_len = self.max_len - len(copied_input_ids)
         copied_input_ids = [0] * pad_len + copied_input_ids
-        copied_input_ids = copied_input_ids[-self.max_len :]  #
+        copied_input_ids = copied_input_ids[-self.max_len :]
         assert len(copied_input_ids) == self.max_len
         if isinstance(target_pos, tuple):  # * train and graph
             pad_len_1 = self.max_len - len(target_pos[1])
@@ -219,7 +218,7 @@ class RecWithContrastiveLearningDataset(Dataset):
         return len(self.user_seq)
 
     def get_pad_user_seq(self):
-        """提前把 pad 做好, 不用到 Dataloader 每次 __getitem__() 阶段再做"""
+        """Prepare the padding in advance, so there's no need to do it again during each __getitem__()  of the Dataloader."""
         max_len = self.max_len + 3
         padded_user_seq = np.zeros((len(self.user_seq), max_len), dtype=int)
 
@@ -234,11 +233,9 @@ class RecWithContrastiveLearningDataset(Dataset):
 
 
 def build_dataloader(user_seq, loader_type):
-    # data_type = loader_type if loader_type != "graph" else "train"
-    data_type = loader_type
     sampler = RandomSampler if loader_type == "train" else SequentialSampler
     pprint_color(f">>> Building {loader_type} Dataloader")
-    dataset = RecWithContrastiveLearningDataset(user_seq, data_type=data_type)
+    dataset = SRDataset(user_seq, data_type=loader_type)
     return DataLoader(
         dataset,
         sampler=sampler(dataset),

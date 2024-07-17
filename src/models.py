@@ -132,7 +132,6 @@ class SASRecModel(nn.Module):
         return torch.matmul(user_seq_emb, test_item_emb.transpose(0, 1))
 
 
-
 class GCN(nn.Module):
     """LightGCN model."""
 
