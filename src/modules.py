@@ -48,29 +48,17 @@ class LayerNorm(nn.Module):
         return self.weight * x + self.bias
 
 
-class Embeddings(nn.Module):
-    """No use. Construct the embeddings from item, position."""
-
-    def __init__(self):
+class RMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-8):
+        """Construct an RMSNorm module."""
         super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
 
-        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)  # 不要乱用padding_idx
-        self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
-
-        self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
-        self.dropout = nn.Dropout(args.hidden_dropout_prob)
-
-    def forward(self, input_ids):
-        seq_length = input_ids.size(1)
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
-        position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
-        items_embeddings = self.item_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        embeddings = items_embeddings + position_embeddings
-
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
+    def forward(self, x):
+        rms = torch.sqrt(x.pow(2).mean(-1, keepdim=True) + self.variance_epsilon)
+        x = x / rms
+        return self.weight * x
 
 
 class SelfAttention(nn.Module):
@@ -94,6 +82,7 @@ class SelfAttention(nn.Module):
         self.attn_dropout = nn.Dropout(args.attention_probs_dropout_prob)
         self.dense = nn.Linear(args.hidden_size, args.hidden_size)
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
+        self.RMSNorm = RMSNorm(args.hidden_size, eps=1e-12)
         self.out_dropout = nn.Dropout(args.hidden_dropout_prob)
 
     def transpose_multihead(self, x):
@@ -172,7 +161,7 @@ class SelfAttention(nn.Module):
         # * Linear + dropout + residual + layer norm
         hidden_states = self.dense(context_layer)
         hidden_states = self.out_dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        hidden_states = self.RMSNorm(hidden_states + input_tensor)
 
         return hidden_states
 
