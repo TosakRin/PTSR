@@ -119,6 +119,16 @@ class Trainer:
 
         # pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
+    @staticmethod
+    def get_result_log(post_fix):
+        log_message = ""
+        for key, value in post_fix.items():
+            if isinstance(value, float):
+                log_message += f" | {key}: {value:.4f}"
+            else:
+                log_message += f"{key}: [{value:03}]"
+        return log_message
+
     def get_full_sort_score(
         self, epoch: int, answers: np.ndarray, pred_list: np.ndarray, mode
     ) -> tuple[list[float], str]:
@@ -141,27 +151,37 @@ class Trainer:
             ndcg.append(ndcg_k(answers, pred_list, k))
         post_fix = {
             "Epoch": epoch,
-            "HIT@5": round(recall[0], 4),
-            "HIT@10": round(recall[1], 4),
-            "HIT@20": round(recall[2], 4),
-            "NDCG@5": round(ndcg[0], 4),
-            "NDCG@10": round(ndcg[1], 4),
-            "NDCG@20": round(ndcg[2], 4),
+            "HIT@5": recall[0],
+            "HIT@10": recall[1],
+            "HIT@20": recall[2],
+            "NDCG@5": ndcg[0],
+            "NDCG@10": ndcg[1],
+            "NDCG@20": ndcg[2],
         }
 
         for key, value in post_fix.items():
             if key != "Epoch":
                 args.tb.add_scalar(f"{mode}/{key}", value, epoch, new_style=True)
-        args.logger.warning(post_fix)
+
+        args.logger.warning(self.get_result_log(post_fix))
 
         self.get_best_score(post_fix, mode)
         return [recall[0], ndcg[0], recall[1], ndcg[1], recall[2], ndcg[2]], str(post_fix)
 
     def get_best_score(self, scores, mode):
+        improv = {
+            "HIT@5": 0,
+            "HIT@10": 0,
+            "HIT@20": 0,
+            "NDCG@5": 0,
+            "NDCG@10": 0,
+            "NDCG@20": 0,
+        }
+        self.best_scores[mode]["Epoch"] = scores["Epoch"]
         for key, value in scores.items():
-            if key in self.best_scores[mode]:
-                self.best_scores[mode][key] = max(self.best_scores[mode][key], value)
             if key != "Epoch":
+                improv[key] = value / (self.best_scores[mode][key] + 1e-12)
+                self.best_scores[mode][key] = max(self.best_scores[mode][key], value)
                 args.tb.add_scalar(
                     f"best_{mode}/best_{key}",
                     self.best_scores[mode][key],
@@ -170,9 +190,16 @@ class Trainer:
                 )
 
         if mode == "test":
-            args.logger.critical(f"{self.best_scores[mode]}")
+            args.logger.critical(self.get_result_log(self.best_scores[mode]))
+            # transfer improv to %
+            improv = {k: round((v - 1) * 100, 2) for k, v in improv.items()}
+            improv_message = ""
+            for key, value in improv.items():
+                if isinstance(value, float):
+                    improv_message += f" | {key}: {value:.2f}%"
+            args.logger.critical(f"v.s. BEST   {improv_message}\n")
         else:
-            args.logger.error(f"{self.best_scores[mode]}")
+            args.logger.error(self.get_result_log(self.best_scores[mode]))
 
     def save(self, file_name: str):
         """Save the model to the file_name"""
@@ -332,9 +359,14 @@ class PTSRTrainer(Trainer):
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
         }
 
+        loss_message = ""
         for key, value in post_fix.items():
             if "loss" in key:
                 args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
+            if isinstance(value, float):
+                loss_message += f" | {key}: {value}"
+            else:
+                loss_message += f"{key}: [{value:03}]"
 
         # metadata = [f"Item_{i}" for i in range(args.item_size)]
         # args.tb.add_embedding(self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
@@ -343,7 +375,7 @@ class PTSRTrainer(Trainer):
         # args.tb.add_embedding(self.model.all_subseq_emb, metadata=metadata, tag="SubseqEmbeddings", global_step=epoch)
 
         if (epoch + 1) % args.log_freq == 0:
-            args.logger.info(str(post_fix))
+            args.logger.info(loss_message)
 
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
         with torch.no_grad():
