@@ -6,7 +6,6 @@
 # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 #
 
-
 import gc
 import math
 import time
@@ -331,6 +330,7 @@ class ICSRecTrainer(Trainer):
             _, self.model.all_item_emb = self.gcn(
                 self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
             )
+
         for batch_i, (rec_batch) in tqdm(
             enumerate(train_dataloader),
             total=batch_num,

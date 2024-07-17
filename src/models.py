@@ -15,6 +15,7 @@ from cprint import pprint_color
 from modules import Encoder, LayerNorm, LigthGCNLayer, NGCFLayer
 from param import args
 
+
 class SASRecModel(nn.Module):
     def __init__(self):
         super().__init__()
