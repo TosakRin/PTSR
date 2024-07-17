@@ -23,7 +23,6 @@ class SASRecModel(nn.Module):
         self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
         self.subseq_embeddings = nn.Embedding(args.num_subseq_id, args.hidden_size)
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
-        self.gcn_embeddings = None
         # self.subseqs_embeddings = nn.Embedding(args.num_subseq_id, args.hidden_size)
         self.all_subseq_emb: Tensor = torch.zeros(args.num_subseq_id, args.hidden_size)
         self.all_item_emb: Tensor = torch.zeros(args.item_size, args.hidden_size)
@@ -33,7 +32,6 @@ class SASRecModel(nn.Module):
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
-        self.gcn = GCN()
 
         self.criterion = nn.BCELoss(reduction="none")  # todo: BCELoss
         self.apply(self.init_weights)
@@ -62,12 +60,6 @@ class SASRecModel(nn.Module):
 
     # model same as SASRec
     def forward(self, input_ids: Tensor):
-        # * GCN update branch
-        if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
-            # todo: 使用 item_embeddings.weight, 因而得到结果会有梯度
-            self.all_subseq_emb, self.all_item_emb = self.gcn(
-                self.graph.torch_A, self.subseq_embeddings.weight, self.item_embeddings.weight
-            )
         # * item embedding branch
         if args.gcn_mode in ["batch", "batch_gcn", "global"]:
             item_embeddings = self.all_item_emb[input_ids]

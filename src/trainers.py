@@ -86,10 +86,7 @@ class Trainer:
         if cuda_condition:
             self.model.cuda()
             self.gcn.cuda()
-            # self.predictor.cuda()
-            # self.reg_loss.cuda()
         self.graph = Graph(args.graph_path)
-        self.model.graph = self.graph
 
         self.train_dataloader, self.cluster_dataloader, self.eval_dataloader, self.test_dataloader = (
             train_dataloader,
@@ -345,6 +342,12 @@ class ICSRecTrainer(Trainer):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
             subseq_id, _, subsequence_1, target_pos_1, subsequence_2, target_id = rec_batch
+
+            # * GCN update branch
+            if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
+                self.model.all_subseq_emb, self.model.all_item_emb = self.gcn(
+                    self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
+                )
 
             # * prediction task
             intent_output = self.model(subsequence_1)
