@@ -270,7 +270,7 @@ def build_dataloader(user_seq, loader_type):
         dataset,
         sampler=sampler(dataset),
         batch_size=args.batch_size,
-        num_workers=0,
+        num_workers=1,
         pin_memory=True,
-        persistent_workers=True
+        # persistent_workers=True
     )
