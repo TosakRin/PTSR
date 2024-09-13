@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--log_dir", default="logs", type=str, help="log directory in log_root")
     parser.add_argument("--tb_dir", default="runs", type=str, help="tensorboard directory in log_root")
+    parser.add_argument("--log_tb_seperate", action="store_true", help="log and tensorboard in different directories")
     parser.add_argument("--data_name", default="Sports_and_Outdoors", type=str, help="dataset name")
     parser.add_argument("--encoder", default="SAS", type=str)
     parser.add_argument("--do_eval", action="store_true", help="do evaluation during training")

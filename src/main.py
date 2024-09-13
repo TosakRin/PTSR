@@ -24,7 +24,7 @@ from utils import (
 )
 
 
-def set_path() -> None:
+def set_datapath() -> None:
     # * data path
     args.seqs_path = f"../data/{args.data_name}.txt"
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
@@ -49,8 +49,12 @@ def set_log() -> None:
     save_time = time.strftime("%m%d-%H%M%S")
     args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
     args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
-    log_path = os.path.join(args.log_root, args.log_dir, args.save_name)
-    tb_path = os.path.join(args.log_root, args.tb_dir, args.save_name)
+    if args.log_tb_seperate:
+        log_path = os.path.join(args.log_root, args.log_dir, args.save_name)
+        tb_path = os.path.join(args.log_root, args.tb_dir, args.save_name)
+    else:
+        log_path = os.path.join(args.log_root, args.save_name, args.save_name)
+        tb_path =  os.path.join(args.log_root, args.save_name)
     max_item = get_max_item(args.seqs_path)
     num_users = get_num_users(args.seqs_path)
     pprint_color(f">>> Max item: {max_item}, Num users: {num_users}")
@@ -73,7 +77,7 @@ def main() -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     args.cuda_condition = torch.cuda.is_available() and not args.no_cuda
     pprint_color(f">>> Cuda Available: {torch.cuda.is_available()}")
-    set_path()
+    set_datapath()
     num_users = set_log()
 
     # * training data: train_user_seq is a list of subsequences.

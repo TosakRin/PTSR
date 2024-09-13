@@ -359,15 +359,6 @@ class PTSRTrainer(Trainer):
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
         }
 
-        loss_message = ""
-        for key, value in post_fix.items():
-            if "loss" in key:
-                args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
-            if isinstance(value, float):
-                loss_message += f" | {key}: {value}"
-            else:
-                loss_message += f"{key}: [{value:03}]"
-
         # metadata = [f"Item_{i}" for i in range(args.item_size)]
         # args.tb.add_embedding(self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
         # args.tb.add_embedding(self.model.all_item_emb, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
@@ -375,6 +366,16 @@ class PTSRTrainer(Trainer):
         # args.tb.add_embedding(self.model.all_subseq_emb, metadata=metadata, tag="SubseqEmbeddings", global_step=epoch)
 
         if (epoch + 1) % args.log_freq == 0:
+            loss_message = ""
+            for key, value in post_fix.items():
+                if "loss" in key:
+                    args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
+                if isinstance(value, float):
+                    loss_message += f" | {key}: {value}"
+                else:
+                    loss_message += f"{key}: [{value:03}]"
+
+            loss_message += f" | Message: {args.save_name}"
             args.logger.info(loss_message)
 
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
