@@ -1,13 +1,10 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-01-12 11:25:55
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-01-12 17:44:44
- @FilePath     : /code/cprint.py
- @Description  : Colorful Print: `pip install termcolor` before use
- @/
-"""
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2022 salesforce.com, inc.
+# All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
 
 from pprint import pformat, pprint
 from typing import Any, Literal, Optional

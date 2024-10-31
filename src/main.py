@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2022 salesforce.com, inc.
+# All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
+
 import os
 import sys
 import time
@@ -28,15 +36,15 @@ def set_datapath() -> None:
     # * data path
     args.seqs_path = f"../data/{args.data_name}.txt"
     args.subseqs_target_path = f"{args.data_dir}{args.data_name}_1_s.pkl"
-    if "data" in args.data_dir:
-        args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
-        args.target_subseqs_path = f"{args.data_dir}{args.data_name}_1_t.pkl"
-        args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
-    # * other data path for sen
-    else:
-        args.subseqs_path = f"{args.data_dir}{args.data_name}_subseq_{args.subseq_len}.txt"
-        args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_{args.subseq_len}.pkl"
-        args.graph_path = f"{args.data_dir}{args.data_name}_graph_{args.subseq_len}.pkl"
+    # if "data" in args.data_dir:
+    #     args.subseqs_path = f"{args.data_dir}{args.data_name}_1.txt"
+    #     args.target_subseqs_path = f"{args.data_dir}{args.data_name}_1_t.pkl"
+    #     args.graph_path = f"{args.data_dir}{args.data_name}_graph.pkl"
+    # # * other data path for sen
+    # else:
+    args.subseqs_path = f"{args.data_dir}{args.data_name}_subseq_{args.subseq_len}.txt"
+    args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_{args.subseq_len}.pkl"
+    args.graph_path = f"{args.data_dir}{args.data_name}_graph_{args.subseq_len}.pkl"
 
     pprint_color(f'==>> args.seqs_path          : "{args.seqs_path}"')
     pprint_color(f'==>> args.subseqs_path       : "{args.subseqs_path}"')

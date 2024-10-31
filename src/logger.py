@@ -1,13 +1,10 @@
-"""
-/@
- @Author       : TosakRin sick_person@outlook.com
- @Date         : 2024-01-06 15:59:30
- @LastEditors  : TosakRin sick_person@outlook.com
- @LastEditTime : 2024-01-12 08:08:12
- @FilePath     : /code/logger.py
- @Description  :
- @/
-"""
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2022 salesforce.com, inc.
+# All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
 
 import datetime
 import logging

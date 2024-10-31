@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2022 salesforce.com, inc.
+# All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
+
+
 import os
 import pickle
 from ast import literal_eval
@@ -494,14 +503,14 @@ if __name__ == "__main__":
     dataset_list = [
         "Beauty",
         "ml-1m",
-        "Sports_and_Outdoors",
-        "Toys_and_Games",
+        "Sports",
+        "Toys",
     ]
     for dataset in dataset_list:
-        data_root = "../subseq"
+        data_root = "../data"
         if not os.path.exists(data_root):
             os.makedirs(data_root)
-        max_len = 1
+        max_len = 50
         seqs_path = f"../data/{dataset}.txt"
         subseqs_path = f"{data_root}/{dataset}_subseq_{max_len}.txt"
         target_subseqs_dict_path = f"{data_root}/{dataset}_t_{max_len}.pkl"
