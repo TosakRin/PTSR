@@ -2,7 +2,7 @@
 tqdm
 tqdm-stubs
 scipy
-numpy
+numpy<2
 pygments
 types-Pygments
 termcolor
