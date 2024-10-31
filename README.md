@@ -1,11 +1,9 @@
 # 📖 PTSR: Prefix-Target Graph-based Sequential Recommendation
 
-## PTSR
-
 This is our Pytorch implementation for the CIKM 2024 Full Paper: **PTSR: Prefix-Target Graph-based Sequential Recommendation**.
 
 - [Paper](https://dl.acm.org/doi/abs/10.1145/3627673.3679718)
-- [Slides]()
+- [Slides](https://docs.google.com/presentation/d/1EkSv0QgJbOZQFMyuD7sYiNeA2Rz7WFQqWJJqatf0vZo/edit?usp=sharing)
 
 ![model](assets/model.png)
 
@@ -22,8 +20,7 @@ This is our Pytorch implementation for the CIKM 2024 Full Paper: **PTSR: Prefix-
 The full list is detailed in [requirements](https://github.com/TosakRin/PTSR/blob/main/requirements.txt).
 
 > [!TIP]
-> The code may contain some version-specific code. It's recommended to follow our verified environment. You may take some extra effort for older version of Python & PyTorch, but the odification will not be troublesome. It's up to you.
-
+> The code may contain some version-specific code. It's recommended to follow our verified environment. You may take some extra effort for older version of Python & PyTorch, but the modification will not be troublesome. It's up to you.
 
 ## Installation
 
