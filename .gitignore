@@ -179,8 +179,6 @@ src/__pycache__/*
 tmp.py
 proxy.sh
 *.ipynb
-*.pkl
-*.txt
 AdaGCL/*
 src/runs/*
 runs/*
@@ -195,3 +193,4 @@ amazon/*
 src/case/*
 Color.py
 src/scripts/*
+*50.*
