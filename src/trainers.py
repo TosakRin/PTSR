@@ -7,6 +7,7 @@
 
 
 import math
+import os.path as osp
 import warnings
 from ast import literal_eval
 from typing import Optional, Union
@@ -249,30 +250,36 @@ class Trainer:
         Returns:
             tuple[Tensor, Tensor]: all_subseq_ids is subseq id for all_subseq. all_subseq is padding subseq (index, not embedding)
         """
-        all_subseq_ids = []
-        all_subseq = []
-        for _, (rec_batch) in tqdm(
-            enumerate(gcn_dataloader),
-            total=len(gcn_dataloader),
-            desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
-            leave=False,
-            dynamic_ncols=True,
-        ):
-            subseq_id, _, subsequence, _, _, _ = rec_batch
-            all_subseq_ids.append(subseq_id)
-            all_subseq.append(subsequence)
-        all_subseq_ids = torch.cat(all_subseq_ids, dim=0)
-        all_subseq = torch.cat(all_subseq, dim=0)
+        all_pad_subseq_path = f"../data/{args.data_name}_all_pad_subseq.pth"
+        if not osp.exists(all_pad_subseq_path):
+            all_subseq_ids = []
+            all_subseq = []
+            for _, (rec_batch) in tqdm(
+                enumerate(gcn_dataloader),
+                total=len(gcn_dataloader),
+                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
+                leave=False,
+                dynamic_ncols=True,
+            ):
+                subseq_id, _, subsequence, _, _, _ = rec_batch
+                all_subseq_ids.append(subseq_id)
+                all_subseq.append(subsequence)
+            all_subseq_ids = torch.cat(all_subseq_ids, dim=0)
+            all_subseq = torch.cat(all_subseq, dim=0)
 
-        # * remove duplicate subsequence
-        tensor_np = all_subseq_ids.numpy()
-        _, indices = np.unique(tensor_np, axis=0, return_index=True)
-        sorted_indices = np.sort(indices)
-        all_subseq_ids = all_subseq_ids[sorted_indices]
-        all_subseq = all_subseq[sorted_indices]
-        # * check if ID is always increasing
-        # print(torch.all(torch.diff(all_subseq_ids) > 0))
-        # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
+            # * remove duplicate subsequence
+            tensor_np = all_subseq_ids.numpy()
+            _, indices = np.unique(tensor_np, axis=0, return_index=True)
+            sorted_indices = np.sort(indices)
+            all_subseq_ids = all_subseq_ids[sorted_indices]
+            all_subseq = all_subseq[sorted_indices]
+            # * check if ID is always increasing
+            # print(torch.all(torch.diff(all_subseq_ids) > 0))
+            # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
+            torch.save(all_subseq, all_pad_subseq_path)
+        else:
+            all_subseq = torch.load(all_pad_subseq_path)
+            all_subseq_ids = torch.arange(all_subseq.size(0))
         return all_subseq
 
     def subseq_embed_update(self, epoch):
