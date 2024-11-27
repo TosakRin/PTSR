@@ -213,3 +213,5 @@ data/Yelp_1_t.pkl
 data/Yelp_1.txt
 data/Yelp_graph.pkl
 data/Yelp.txt
+
+*.pth

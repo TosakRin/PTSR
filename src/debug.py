@@ -33,7 +33,7 @@ def convert_command_to_list(command):
 
 
 # Example command
-command = "python main.py --data_name Beauty --rec_weight 1 --f_neg --hidden_dropout_prob 0.5 --attention_probs_dropout_prob 0.5 --gpu_id 1 --lr_adam 0.001 --epochs 1000 --do_test --scheduler warmup+multistep --milestones [25,100] --gamma 0.1 --warm_up_epochs 5 --gnn_layer 3 --loader new --gcn_mode batch --msg debug"
+command = 'python main.py --data_name Beauty --do_test --do_eval --scheduler warmup+multistep --milestones "[25, 50]" --gamma 0.1 --warm_up_epochs 5 --loader_type new --gcn_mode batch --gpu_id 0 --log_root logs --gnn_layer 4 --msg training'
 
 # Convert the command
 converted_list = convert_command_to_list(command)

@@ -88,12 +88,13 @@ class Trainer:
             test_dataloader,
         )
 
-        self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
+        # self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
 
         # * prepare padding subseq for subseq embedding update
         self.all_subseq = self.get_all_pad_subseq(self.graph_dataloader)
+        # * pad_mask & num_non_pad: 用于计算 subseq embedding 的平均值
         self.pad_mask = self.all_subseq > 0
         self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)
 

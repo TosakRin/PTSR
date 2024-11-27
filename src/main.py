@@ -54,7 +54,7 @@ def set_datapath() -> None:
 
 
 def set_log() -> None:
-    save_time = time.strftime("%m%d-%H%M%S")
+    save_time = time.strftime("%m%d%H%M%S")
     args.save_name = f"{save_time}-{args.data_name}-{args.msg}"
     args.checkpoint_path = os.path.join(args.output_dir, f"{args.save_name}.pt")
     if args.log_tb_seperate:
@@ -104,7 +104,8 @@ def main() -> None:
     test_rating_matrix = get_rating_matrix(test_user_seq, num_users, args.item_size, "test")
     args.rating_matrix = valid_rating_matrix
 
-    args.subseq_id_map, _ = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
+    # MARK 通过 ID 找 subsequence 的 item list
+    args.subseq_id_map, args.id_subseq_map = TargetSubseqs.get_subseq_id_map(args.subseqs_path)
     args.num_subseq_id = len(args.subseq_id_map)
 
     # * graph -> GNN, train -> SASRec
