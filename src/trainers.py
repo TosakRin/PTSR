@@ -88,15 +88,11 @@ class Trainer:
             test_dataloader,
         )
 
-        # self.optim_adam = AdamW(self.model.adam_params, lr=args.lr_adam, weight_decay=args.weight_decay)
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
 
         # * prepare padding subseq for subseq embedding update
-        self.all_subseq = self.get_all_pad_subseq(self.graph_dataloader)
-        # * pad_mask & num_non_pad: 用于计算 subseq embedding 的平均值
-        self.pad_mask = self.all_subseq > 0
-        self.num_non_pad = self.pad_mask.sum(dim=1, keepdim=True)
+        self.all_subseq, self.pad_mask, self.num_non_pad = self.get_all_pad_subseq(self.graph_dataloader)
 
         self.best_scores = {
             "valid": {
@@ -121,6 +117,7 @@ class Trainer:
 
         # pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
+    # MARK: 不要动的函数
     @staticmethod
     def get_result_log(post_fix):
         log_message = ""
@@ -245,11 +242,16 @@ class Trainer:
             raise ValueError("Invalid scheduler")
         return scheduler
 
+    # MARK: 全局PAD预处理
     def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
         """collect all padding subsequence index and subsequence for updating subseq embeddings.
 
         Returns:
-            tuple[Tensor, Tensor]: all_subseq_ids is subseq id for all_subseq. all_subseq is padding subseq (index, not embedding)
+            tuple[Tensor, Tensor, Tensor]:
+                - all_subseq_ids: subseq id for all_subseq.
+                - all_subseq: padding subseq (index, not embedding), e.g., [[0,0,1,2,3], [0,1,2,3,4], ...]
+                - pad_mask: valid subseq mask, e.g., [[False, False, True, True, True], [False, True, True, True, True], ...]
+                - num_non_pad: number of valid item in each subseq, e.g., [[3], [4], ...]
         """
         all_pad_subseq_path = f"../data/{args.data_name}_all_pad_subseq.pth"
         if not osp.exists(all_pad_subseq_path):
@@ -279,10 +281,22 @@ class Trainer:
             # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
             torch.save(all_subseq, all_pad_subseq_path)
         else:
+            for _, (rec_batch) in tqdm(
+                enumerate(gcn_dataloader),
+                total=len(gcn_dataloader),
+                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
+                leave=False,
+                dynamic_ncols=True,
+            ):
+                continue
             all_subseq = torch.load(all_pad_subseq_path)
             all_subseq_ids = torch.arange(all_subseq.size(0))
-        return all_subseq
+        # * pad_mask & num_non_pad: 用于计算 subseq embedding 的平均值
+        pad_mask = all_subseq > 0
+        num_non_pad = pad_mask.sum(dim=1, keepdim=True)
+        return all_subseq, pad_mask, num_non_pad
 
+    # MARK: Subseq 更新策略
     def subseq_embed_update(self, epoch):
         self.model.item_embeddings.cpu()
         self.model.subseq_embeddings.cpu()
@@ -319,9 +333,8 @@ class PTSRTrainer(Trainer):
         # * update subseq embeddings: 1. every epoch(√) 2. every batch 3. no update
         if args.gcn_mode != "None":
             self.subseq_embed_update(epoch)
-        # * update gcn: 1. every epoch 2. every batch(√) 3. no update
-        if args.gcn_mode == "global":
-            # * call gcn every epoch
+        # * update GCN (GCN Propogation): 1. every epoch 2. every batch(√) 3. no update
+        if args.gcn_mode == "global":  # GCN forward every epoch
             _, self.model.all_item_emb = self.gcn(
                 self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
             )
@@ -337,8 +350,8 @@ class PTSRTrainer(Trainer):
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
             _, _, subsequence_1, target_pos_1, _, _ = rec_batch
 
-            # * GCN update branch
-            if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":
+            # * GCN forward propogation
+            if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":  # GCN forward every batch
                 self.model.all_subseq_emb, self.model.all_item_emb = self.gcn(
                     self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
                 )
@@ -348,10 +361,8 @@ class PTSRTrainer(Trainer):
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
 
-            # self.optim_adagrad.zero_grad()
             self.optim_adam.zero_grad()
             rec_loss.backward()
-            # self.optim_adagrad.step()
             self.optim_adam.step()
 
             rec_avg_loss += rec_loss.item()
@@ -367,6 +378,7 @@ class PTSRTrainer(Trainer):
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
         }
 
+        # MARK: Embedding Visualization
         # metadata = [f"Item_{i}" for i in range(args.item_size)]
         # args.tb.add_embedding(self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
         # args.tb.add_embedding(self.model.all_item_emb, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
@@ -439,6 +451,7 @@ class PTSRTrainer(Trainer):
 
             return self.get_full_sort_score(epoch, answer_list, pred_list, mode)
 
+    # MARK: 不要动的函数
     def train(self, epoch) -> None:
         assert self.train_dataloader is not None
         args.mode = "train"
