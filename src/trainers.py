@@ -348,7 +348,7 @@ class PTSRTrainer(Trainer):
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            _, _, subsequence_1, target_pos_1, _, _ = rec_batch
+            input_ids, gt_ids = rec_batch
 
             # * GCN forward propogation
             if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":  # GCN forward every batch
@@ -357,9 +357,9 @@ class PTSRTrainer(Trainer):
                 )
 
             # * prediction task
-            intent_output = self.model(subsequence_1)
+            intent_output = self.model(input_ids)
             logits = self.model.predict_full(intent_output[:, -1, :])
-            rec_loss = nn.CrossEntropyLoss()(logits, target_pos_1[:, -1])
+            rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
 
             self.optim_adam.zero_grad()
             rec_loss.backward()
@@ -414,7 +414,7 @@ class PTSRTrainer(Trainer):
                 dynamic_ncols=True,
             ):
                 batch = tuple(t.to(self.device) for t in batch)
-                user_ids, input_ids, _, answers = batch
+                user_ids, input_ids, answers = batch
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
                 recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]

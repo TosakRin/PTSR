@@ -178,37 +178,28 @@ class SRDataset(Dataset):
             return self._data_sample_rec_task(user_id, input_ids, target_pos, answer)
         elif args.loader_type == "new":
             # * new loader_type: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
-            pad_user_seq = self.pad_user_seq[index]
-            if self.data_type in ["train", "graph"]:
-                user_seq = self.user_seq[index]
+            pad_user_seq = self.pad_user_seq_array[index]
+            if self.data_type == "train":
                 input_ids = pad_user_seq[:-3]
                 target_pos = pad_user_seq[1:-2]
-                answer = target_pos[-1]
-                subseqs_id = (
-                    args.subseq_id_map[self.pad_origin_map[pad_user_seq][:-3]] if self.data_type == "graph" else []
-                )
                 return (
-                    torch.tensor(subseqs_id, dtype=torch.long),
-                    torch.tensor(user_id, dtype=torch.long),
-                    torch.tensor(input_ids, dtype=torch.long),
-                    torch.tensor(target_pos, dtype=torch.long),
-                    torch.tensor(input_ids, dtype=torch.long),
-                    torch.tensor(answer, dtype=torch.long),
+                    torch.from_numpy(input_ids),
+                    torch.from_numpy(target_pos),
                 )
+            if self.data_type == "graph":
+                subseqs_id = args.subseq_id_map[self.pad_origin_map[self.pad_user_seq[index]][:-3]]
+                input_ids = pad_user_seq[:-3]
+                return (torch.tensor(subseqs_id), torch.from_numpy(input_ids))
             elif self.data_type == "valid":
                 input_ids = pad_user_seq[1:-2]
-                target_pos = pad_user_seq[2:-1]
                 answer = [pad_user_seq[-2]]
             else:
-                items_with_noise = pad_user_seq
-                input_ids = items_with_noise[2:-1]
-                target_pos = items_with_noise[3:]
-                answer = [items_with_noise[-1]]
+                input_ids = pad_user_seq[2:-1]
+                answer = [pad_user_seq[-1]]
             return (
-                torch.tensor(user_id, dtype=torch.long),
-                torch.tensor(input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
+                torch.tensor(user_id),
+                torch.from_numpy(input_ids),
+                torch.tensor(answer),
             )
         else:
             raise ValueError(f"Invalid loader_type mode: {args.loader_mode}")
@@ -226,8 +217,9 @@ class SRDataset(Dataset):
             padded_user_seq[i, -min(len(seq), max_len) :] = seq[-max_len:]
 
         self.pad_user_seq = tuple(map(tuple, padded_user_seq))
-        user_seq = tuple(map(tuple, self.user_seq))
+        self.pad_user_seq_array = np.array(self.pad_user_seq)
 
+        user_seq = tuple(map(tuple, self.user_seq))
         self.origin_pad_map = dict(zip(user_seq, self.pad_user_seq))
         self.pad_origin_map = dict(zip(self.pad_user_seq, user_seq))
 
