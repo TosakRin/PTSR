@@ -41,65 +41,6 @@ class SRDataset(Dataset):
         )
         self.get_pad_user_seq()
 
-    def _data_sample_rec_task(self, user_id: int, input_ids: list[int], target_pos, answer: list[int]):
-        """post-processing the data sample to Tensor for the RecWithContrastiveLearningDataset from __getitem__:
-
-        1. padding
-        2. truncating, example: [0, 0, ..., 1, 2, 3]
-        3. assembling
-
-        Args:
-            user_id (int):
-            items (list[int]):
-            input_ids (list[int]): Transforer input sequence.
-            target_pos (_type_): Transformer output target sequence.
-            answer (list[int]): target item
-
-        Returns:
-            tuple:
-        """
-        copied_input_ids = input_ids
-
-        # * input padding and truncating
-        pad_len = self.max_len - len(copied_input_ids)
-        copied_input_ids = [0] * pad_len + copied_input_ids
-        copied_input_ids = copied_input_ids[-self.max_len :]
-        assert len(copied_input_ids) == self.max_len
-        if isinstance(target_pos, tuple):  # * train and graph
-            pad_len_1 = self.max_len - len(target_pos[1])
-            target_pos_1 = [0] * pad_len + target_pos[0]
-            target_pos_2 = [0] * pad_len_1 + target_pos[1]
-            target_pos_1 = target_pos_1[-self.max_len :]
-            target_pos_2 = target_pos_2[-self.max_len :]
-            assert len(target_pos_1) == self.max_len
-            assert len(target_pos_2) == self.max_len
-
-            subseqs_id = args.subseq_id_map[tuple(input_ids)]
-
-        else:  # * valid and test
-            target_pos = [0] * pad_len + target_pos
-            target_pos = target_pos[-self.max_len :]
-            assert len(target_pos) == self.max_len
-
-        # * assemble sequence
-        return (
-            (
-                torch.tensor(subseqs_id, dtype=torch.long),
-                torch.tensor(user_id, dtype=torch.long),
-                torch.tensor(copied_input_ids, dtype=torch.long),
-                torch.tensor(target_pos_1, dtype=torch.long),
-                torch.tensor(target_pos_2, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-            )
-            if isinstance(target_pos, tuple)
-            else (
-                torch.tensor(user_id, dtype=torch.long),
-                torch.tensor(copied_input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-            )
-        )
-
     def __getitem__(self, index: int):
         """Get the data sample for the RecWithContrastiveLearningDataset.
 
@@ -132,77 +73,31 @@ class SRDataset(Dataset):
             tuple(Tensor):
         """
         user_id = index
-        if args.loader_type == "old":
-            user_seq = self.user_seq[index]
-            assert self.data_type in {"train", "valid", "test", "graph"}
-
-            if self.data_type in ["train", "graph"]:
-                # * Remember that Training data (items) is subsequence
-                input_ids: list[int] = user_seq[:-3]
-                target_pos = user_seq[1:-2]
-                # * target_prefix: prefix subsequence of the target item in training stage.
-                target_prefix_list: list[list[int]] = self.train_tag[user_seq[-3]]
-
-                # * `item` and `target_prefix` are both subsequence.
-                # * But `items` not include User_ID while `target_prefix` include User_ID.
-                # * Because `items` comes from `train_user_seq` while `target_prefix` comes from `train_tag` (aka )
-                # * So the following code always use target_prefix[1:].
-
-                # ? 下面这个 target_pos_ 是什么意思?
-                flag = False
-                # * sample another subseq from the target item set
-                for target_prefix in target_prefix_list:
-                    # * skip the subseq same with the input subseq
-                    if target_prefix[1:] == user_seq[:-3]:
-                        continue
-                    target_pos_ = target_prefix[1:]
-                    flag = True
-                if not flag:
-                    target_pos_ = random.choice(target_prefix_list)[1:]
-                answer = [0]  # no use, just for the same format
-            elif self.data_type == "valid":
-                input_ids = user_seq[:-2]
-                target_pos = user_seq[1:-1]
-                answer = [user_seq[-2]]
-            else:
-                input_ids = user_seq[:-1]
-                target_pos = user_seq[1:]
-                answer = [user_seq[-1]]
-
-            # * Sample the data
-            if self.data_type in ["train", "graph"]:
-                train_target_pos = (target_pos, target_pos_)
-                return self._data_sample_rec_task(user_id, input_ids, train_target_pos, answer)
-            if self.data_type == "valid":
-                return self._data_sample_rec_task(user_id, input_ids, target_pos, answer)
-            return self._data_sample_rec_task(user_id, input_ids, target_pos, answer)
-        elif args.loader_type == "new":
-            # * new loader_type: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
-            pad_user_seq = self.pad_user_seq_array[index]
-            if self.data_type == "train":
-                input_ids = pad_user_seq[:-3]
-                target_pos = pad_user_seq[1:-2]
-                return (
-                    torch.from_numpy(input_ids),
-                    torch.from_numpy(target_pos),
-                )
-            if self.data_type == "graph":
-                subseqs_id = args.subseq_id_map[self.pad_origin_map[self.pad_user_seq[index]][:-3]]
-                input_ids = pad_user_seq[:-3]
-                return (torch.tensor(subseqs_id), torch.from_numpy(input_ids))
-            elif self.data_type == "valid":
-                input_ids = pad_user_seq[1:-2]
-                answer = [pad_user_seq[-2]]
-            else:
-                input_ids = pad_user_seq[2:-1]
-                answer = [pad_user_seq[-1]]
+        # * new loader_type: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
+        pad_user_seq = self.pad_user_seq_array[index]
+        if self.data_type == "train":
+            input_ids = pad_user_seq[:-3]
+            target_pos = pad_user_seq[1:-2]
             return (
-                torch.tensor(user_id),
                 torch.from_numpy(input_ids),
-                torch.tensor(answer),
+                torch.from_numpy(target_pos),
             )
+        if self.data_type == "graph":
+            subseqs_id = args.subseq_id_map[self.pad_origin_map[self.pad_user_seq[index]][:-3]]
+            input_ids = pad_user_seq[:-3]
+            return (torch.tensor(subseqs_id), torch.from_numpy(input_ids))
+        elif self.data_type == "valid":
+            input_ids = pad_user_seq[1:-2]
+            answer = [pad_user_seq[-2]]
         else:
-            raise ValueError(f"Invalid loader_type mode: {args.loader_mode}")
+            input_ids = pad_user_seq[2:-1]
+            answer = [pad_user_seq[-1]]
+        return (
+            torch.tensor(user_id),
+            torch.from_numpy(input_ids),
+            torch.tensor(answer),
+        )
+        raise ValueError(f"Invalid loader_type mode: {args.loader_mode}")
 
     def __len__(self):
         """consider n_view of a single sequence as one sample"""
