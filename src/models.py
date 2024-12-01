@@ -25,7 +25,7 @@ class SASRecModel(nn.Module):
         self.all_item_emb: Tensor = torch.zeros(args.item_size, args.hidden_size)
         self.adagrad_params = [self.item_embeddings.weight]
         self.adam_params = [p for n, p in self.named_parameters() if n != "item_embeddings.weight"]
-
+        self.prefix_encoder = Encoder()
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)
@@ -68,6 +68,47 @@ class SASRecModel(nn.Module):
 
         # * only use the last layer, SHAPE: [batch_size, seq_length, hidden_size]
         return item_encoded_layers[-1]
+
+    def forward_p(self, input_ids: Tensor, sp):
+        """extend task 的 forward pass. 主要改动:
+        1. 使用 subseq_embeddings 作为 token embeddings
+        2. 使用 prefix_encoder 作为 Transformer encoder
+        3. 使用 sp 作为 prefix 的第一个 token,即item_encoder得到的结果
+        4. 不使用 position embedding + 取消 mask 中的对角线 mask
+
+        Args:
+            input_ids (Tensor): 已经 Padding 完成的输入序列,注意其中元素是图中的 subseq_id 而非 item_id. SHAPE: [batch_size, seq_length], e.g. [256, 50]
+            sp (tensor): prefix 的第一个 token, 即item_encoder得到的结果, SHAPE: [batch_size, hidden_size], e.g. [256, 64]
+
+        Returns:
+            tensor: TRM 最后一层的输出. SHAPE: [batch_size, seq_length, hidden_size], e.g. [256, 50, 64]
+        """
+        prefix_embeddings = self.all_subseq_emb[input_ids]
+        prefix_embeddings[:, 0, :] = sp
+        extended_attention_mask = self.get_pad_mask(input_ids)
+        # sequence_emb = self.add_position_embedding(input_ids, prefix_embeddings)
+        item_encoded_layers = self.prefix_encoder(
+            prefix_embeddings, extended_attention_mask, output_all_encoded_layers=True
+        )
+        return item_encoded_layers[-1]
+
+    def get_pad_mask(self, input_ids: Tensor):
+        """不带对角线的 pad mask. 即无位置关系的 self-attention.
+
+        Args:
+            input_ids (Tensor): 已经 Padding 完成的输入序列. SHAPE: [batch_size, seq_length], e.g. [256, 50]
+
+        Returns:
+            tensor: pad mask. SHAPE: [batch_size, 1, 1, seq_length], e.g. [256, 1, 1, 50]
+        """
+        # * Shape: [batch_size, seq_length]
+        pad_mask = (input_ids > 0).long()
+        pad_mask: Tensor = pad_mask.unsqueeze(1).unsqueeze(2)  # torch.int64
+        max_len: int = pad_mask.size(-1)
+        attn_shape = (1, max_len, max_len)
+        pad_mask = pad_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        pad_mask = (1.0 - pad_mask) * -10000.0
+        return pad_mask
 
     def get_item_embeddings(self, input_ids: Tensor):
         if args.gcn_mode != "None":
