@@ -75,15 +75,19 @@ class SRDataset(Dataset):
         user_id = index
         # * new loader_type: 1. use global pad sequence 2. drop target_pos sample 3. remove test noise interactions
         pad_user_seq = self.pad_user_seq_array[index]
+
+        # * 获取 subseqs_id 做 extend task 的查表
+        if self.data_type in ["train", "graph"]:  # args.subseq_id_map 只统计了训练集
+            subseqs_id = args.subseq_id_map[self.pad_origin_map[self.pad_user_seq[index]][:-3]]
         if self.data_type == "train":
             input_ids = pad_user_seq[:-3]
             target_pos = pad_user_seq[1:-2]
             return (
+                subseqs_id,  # 返回 subseqs_id 用于 extend task 通过 subseqs id 获取其子序列列表
                 torch.from_numpy(input_ids),
                 torch.from_numpy(target_pos),
             )
         if self.data_type == "graph":
-            subseqs_id = args.subseq_id_map[self.pad_origin_map[self.pad_user_seq[index]][:-3]]
             input_ids = pad_user_seq[:-3]
             return (torch.tensor(subseqs_id), torch.from_numpy(input_ids))
         elif self.data_type == "valid":
@@ -117,6 +121,17 @@ class SRDataset(Dataset):
         user_seq = tuple(map(tuple, self.user_seq))
         self.origin_pad_map = dict(zip(user_seq, self.pad_user_seq))
         self.pad_origin_map = dict(zip(self.pad_user_seq, user_seq))
+
+        # * 为了 Valid/Test 时做已 PAD 到原始的映射做 extend task 的查表
+        if self.data_type == "valid":
+            valid_user_seq = tuple([tuple(x[:-2]) for x in self.user_seq])
+            valid_pad_user_seq = tuple([tuple(x[1:-2]) for x in self.pad_user_seq])
+            self.valid_origin_pad_map = dict(zip(valid_pad_user_seq, valid_user_seq))
+
+        if self.data_type == "test":
+            test_user_seq = tuple([tuple(x[:-1]) for x in self.user_seq])
+            test_pad_user_seq = tuple([tuple(x[2:-1]) for x in self.pad_user_seq])
+            self.test_origin_pad_map = dict(zip(test_pad_user_seq, test_user_seq))
 
 
 def build_dataloader(user_seq, loader_type):
