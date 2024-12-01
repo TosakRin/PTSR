@@ -8,6 +8,7 @@
 
 import math
 import os.path as osp
+import time
 import warnings
 from ast import literal_eval
 from typing import Optional, Union
@@ -114,7 +115,6 @@ class Trainer:
 
         # pprint_color(f">>> Total Parameters: {sum(p.nelement() for p in self.model.parameters())}")
 
-    # MARK: 不要动的函数
     @staticmethod
     def get_result_log(post_fix):
         log_message = ""
@@ -271,6 +271,20 @@ class PTSRTrainer(Trainer):
 
         # * prepare padding subseq for subseq embedding update
         self.all_subseq, self.pad_mask, self.num_non_pad = self.get_all_pad_subseq(self.graph_dataloader)
+        self.id_prefix_map, self.id_prefixid_map = self.get_train_prefix_sub(self.graph_dataloader)
+
+        # * self.id_prefixid_map: key 是输入的 prefix, value 是该 prefix 的子序列的 ID 列表
+        # * 训练/预测时, 通过这个 map 应该能直接获得已经 padding 的子序列 ID 列表
+        # * 所以要对这个 ID 列表做 Padding
+        def get_id_pad(dic, length=50):
+            return {
+                k: np.pad(v, (max(0, length - len(v)), 0), mode="constant", constant_values=0)[-length:]
+                for k, v in dic.items()
+            }
+
+        self.id_pad_prefix_map = get_id_pad(self.id_prefixid_map, 50)
+
+        self.valid_prefix, self.test_prefix = self.get_test_prefix_sub(self.test_dataloader)
 
     # MARK: Train
     def train_epoch(self, epoch, train_dataloader):
@@ -302,7 +316,7 @@ class PTSRTrainer(Trainer):
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
             rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            input_ids, gt_ids = rec_batch
+            subseq_ids, input_ids, gt_ids = rec_batch
 
             # * GCN forward propogation
             if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":  # GCN forward every batch
@@ -312,6 +326,17 @@ class PTSRTrainer(Trainer):
 
             # * prediction task
             intent_output = self.model(input_ids)
+
+            # * Extension Task
+            def query_prefix(d, keys):
+                arrays = [d[key.item()] for key in keys if key.item() in d]
+                stacked_array = np.stack(arrays, axis=0)
+                tensor = torch.from_numpy(stacked_array).to(self.device)
+                return tensor
+
+            prefix = query_prefix(self.id_pad_prefix_map, subseq_ids)
+            intent_output = self.model.forward_p(prefix, sp=intent_output[:, -1, :])
+
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
 
@@ -358,7 +383,7 @@ class PTSRTrainer(Trainer):
             self.model.eval()
             # * gcn is fixed in the test phase. So it's unnecessary to call gcn() every batch.
             if args.gcn_mode != "None":
-                _, self.model.all_item_emb = self.gcn(
+                self.model.all_subseq_emb, self.model.all_item_emb = self.gcn(
                     self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
                 )
             for i, batch in tqdm(
@@ -373,10 +398,27 @@ class PTSRTrainer(Trainer):
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
                 recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]
-                recommend_output = recommend_output[:, -1, :]  # [BxH]
+                # recommend_output = recommend_output[:, -1, :]  # [BxH]
 
+                # * Extension Task
+                if mode == "valid":
+                    original_seqs = [
+                        dataloader.dataset.valid_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
+                    ]
+                elif mode == "test":
+                    original_seqs = [
+                        dataloader.dataset.test_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
+                    ]
+                prefix = self.valid_prefix if mode == "valid" else self.test_prefix
+                prefix = (
+                    torch.stack([prefix[tuple_key] for tuple_key in original_seqs if tuple_key in prefix])
+                    .long()
+                    .squeeze(1)
+                    .to(self.device)
+                )
+                recommend_output = self.model.forward_p(prefix, sp=recommend_output[:, -1, :])
                 # * recommendation results. SHAPE: [Batch_size, Item_size]
-                rating_pred = self.model.predict_full(recommend_output)
+                rating_pred = self.model.predict_full(recommend_output[:, -1, :])
                 rating_pred = rating_pred.cpu().data.numpy().copy()
                 batch_user_index = user_ids.cpu().numpy()
 
@@ -478,3 +520,96 @@ class PTSRTrainer(Trainer):
         self.model.item_embeddings.to(self.device)
         self.model.subseq_embeddings.to(self.device)
 
+    # MARK: Subeq在图中出现过的子序列
+    def get_train_prefix_sub(self, gcn_dataloader):
+        """给定一个 user_seq, 返回 dict: {subseq_id: sub_prefix}
+
+        基本逻辑:
+            1. 从 args.subseq_id_map 中获取所有 subseqs
+            2. 然后对每一个 subseq 去循环找子串, 子串判断条件是"是否在 args.subseq_id_map" 的 key 中
+            3. 如果在就将子串和子串ID都收集起来，形成两个字典
+            4. 字典的 Key 是 subseq_id, value 是子串本身(即子串item列表,如[1,2,3])或者子串ID
+
+
+        Returns:
+            _type_: _description_
+        """
+        id_prefix_map = {}
+        id_prefixid_map = {}
+
+        def check_subsequences_in_dict(subseq):
+            n = len(subseq)
+            prefix = []
+            prefix_id = []
+            for i in range(n, 0, -1):  # 从n到1（包括1），步长为-1
+                sub = tuple(subseq[i - 1 : n])  # 获取子序列并转换成元组，因为字典的键是不可变类型
+                if sub in args.subseq_id_map:
+                    prefix.append(sub)
+                    prefix_id.append(args.subseq_id_map[sub])
+            return prefix, prefix_id
+
+        for subseq, subseq_id in args.subseq_id_map.items():
+            id_prefix_map[subseq_id], id_prefixid_map[subseq_id] = check_subsequences_in_dict(subseq)
+
+        return id_prefix_map, id_prefixid_map
+
+    def get_test_prefix_sub(self, test_dataloader):
+        user_seq = test_dataloader.dataset.user_seq
+        valid_input = [sub[:-2] for sub in user_seq]
+        test_input = [sub[:-1] for sub in user_seq]
+
+        def get_subseq_prefix(subseq):
+            n = len(subseq)
+            prefix_id = []
+            for i in range(n, 0, -1):  # 从n到1（包括1），步长为-1
+                sub = tuple(subseq[i - 1 : n])  # 获取子序列并转换成元组，因为字典的键是不可变类型
+                if sub in args.subseq_id_map:
+                    prefix_id.append(args.subseq_id_map[sub])
+            return prefix_id
+
+        valid = {}
+        test = {}
+
+        def pad_or_trim_lists(lists, l):
+            """
+            对于给定的列表lists中的每个子列表，将其扩展成长度为l的形式。
+            如果子列表长度小于l，则在前面补0；
+            如果子列表长度大于l，则从后面开始裁剪至长度为l。
+
+            :param lists: 包含子列表的列表
+            :param l: 目标长度
+            :return: 处理后的 numpy.ndarray
+            """
+            padded_arrays = []
+            for sublist in lists:
+                # 转换为 NumPy 数组
+                arr = np.array(sublist)
+
+                # 如果子列表长度大于l，进行裁剪
+                if len(arr) > l:
+                    padded_arr = arr[-l:]  # 保留最后l个元素
+                else:
+                    # 计算需要补充0的数量
+                    padding_size = l - len(arr)
+                    # 使用np.pad进行填充
+                    padded_arr = np.pad(arr, (padding_size, 0), "constant", constant_values=(0, 0))
+
+                padded_arrays.append(padded_arr)
+
+            # 将所有数组堆叠成一个二维数组
+            result_array = np.stack(padded_arrays)
+            result_tensor = torch.from_numpy(result_array)
+
+            return result_tensor
+
+        for seq in valid_input:
+            prefix = get_subseq_prefix(seq)
+            pad_prefix = pad_or_trim_lists([prefix], 50)
+            valid[tuple(seq)] = pad_prefix
+
+        for seq in test_input:
+            prefix = get_subseq_prefix(seq)
+            pad_prefix = pad_or_trim_lists([prefix], 50)
+            test[tuple(seq)] = pad_prefix
+
+        return valid, test
