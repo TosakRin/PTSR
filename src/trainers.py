@@ -334,8 +334,9 @@ class PTSRTrainer(Trainer):
                 tensor = torch.from_numpy(stacked_array).to(self.device)
                 return tensor
 
-            prefix = query_prefix(self.id_pad_prefix_map, subseq_ids)
-            intent_output = self.model.forward_p(prefix, sp=intent_output[:, -1, :])
+            if args.extend:
+                prefix = query_prefix(self.id_pad_prefix_map, subseq_ids)
+                intent_output = self.model.forward_p(prefix, sp=intent_output[:, -1, :])
 
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
@@ -401,22 +402,24 @@ class PTSRTrainer(Trainer):
                 # recommend_output = recommend_output[:, -1, :]  # [BxH]
 
                 # * Extension Task
-                if mode == "valid":
-                    original_seqs = [
-                        dataloader.dataset.valid_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
-                    ]
-                elif mode == "test":
-                    original_seqs = [
-                        dataloader.dataset.test_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
-                    ]
-                prefix = self.valid_prefix if mode == "valid" else self.test_prefix
-                prefix = (
-                    torch.stack([prefix[tuple_key] for tuple_key in original_seqs if tuple_key in prefix])
-                    .long()
-                    .squeeze(1)
-                    .to(self.device)
-                )
-                recommend_output = self.model.forward_p(prefix, sp=recommend_output[:, -1, :])
+                if args.extend:
+                    if mode == "valid":
+                        original_seqs = [
+                            dataloader.dataset.valid_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
+                        ]
+                    elif mode == "test":
+                        original_seqs = [
+                            dataloader.dataset.test_origin_pad_map[tuple(input_id.tolist())] for input_id in input_ids
+                        ]
+                    prefix = self.valid_prefix if mode == "valid" else self.test_prefix
+                    prefix = (
+                        torch.stack([prefix[tuple_key] for tuple_key in original_seqs if tuple_key in prefix])
+                        .long()
+                        .squeeze(1)
+                        .to(self.device)
+                    )
+                    recommend_output = self.model.forward_p(prefix, sp=recommend_output[:, -1, :])
+
                 # * recommendation results. SHAPE: [Batch_size, Item_size]
                 rating_pred = self.model.predict_full(recommend_output[:, -1, :])
                 rating_pred = rating_pred.cpu().data.numpy().copy()

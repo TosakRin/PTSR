@@ -91,6 +91,9 @@ def parse_args() -> argparse.Namespace:
         help="dataloader mode, new for more efficient way and old for vanilla way.",
     )
 
+    # * Extend
+    parser.add_argument("--extend", action="store_true", help="do extend task")
+
     return parser.parse_args()
 
 
