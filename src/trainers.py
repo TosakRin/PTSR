@@ -255,6 +255,20 @@ class Trainer:
             return self.full_test_epoch(epoch, self.test_dataloader, "test")
         return self.sample_test_epoch(epoch, self.test_dataloader)
 
+    def log(self, epoch, post_fix) -> None:
+        if (epoch + 1) % args.log_freq == 0:
+            loss_message = ""
+            for key, value in post_fix.items():
+                if "loss" in key:
+                    args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
+                if isinstance(value, float):
+                    loss_message += f" | {key}: {value}"
+                else:
+                    loss_message += f"{key}: [{value:03}]"
+
+            loss_message += f" | Message: {args.save_name}"
+            args.logger.info(loss_message)
+
 
 # MARK: PTSR
 class PTSRTrainer(Trainer):
@@ -307,16 +321,14 @@ class PTSRTrainer(Trainer):
                 self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
             )
 
-        for batch_i, (rec_batch) in tqdm(
-            enumerate(train_dataloader),
-            total=batch_num,
-            leave=False,
-            desc=f"{args.save_name} | Device: {args.gpu_id} | Rec Training Epoch {epoch}",
-            dynamic_ncols=True,
+        train_desc = f"{args.save_name} | Device: {args.gpu_id} | Rec Training Epoch {epoch}"
+
+        for batch_i, (batch) in tqdm(
+            enumerate(train_dataloader), total=batch_num, leave=False, desc=train_desc, dynamic_ncols=True
         ):
             # * rec_batch shape: key_name x batch_size x feature_dim
-            rec_batch = tuple(t.to(self.device) for t in rec_batch)
-            subseq_ids, input_ids, gt_ids = rec_batch
+            batch = tuple(t.to(self.device) for t in batch)
+            subseq_ids, input_ids, gt_ids = batch
 
             # * GCN forward propogation
             if args.gcn_mode in ["batch", "batch_gcn"] and args.mode == "train":  # GCN forward every batch
@@ -338,6 +350,7 @@ class PTSRTrainer(Trainer):
                 prefix = query_prefix(self.id_pad_prefix_map, subseq_ids)
                 intent_output = self.model.forward_p(prefix, sp=intent_output[:, -1, :])
 
+            # * predict & loss
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
 
@@ -346,8 +359,6 @@ class PTSRTrainer(Trainer):
             self.optim_adam.step()
 
             rec_avg_loss += rec_loss.item()
-            if args.batch_loss:
-                args.tb.add_scalar("batch_loss/rec_loss", rec_loss.item(), epoch * batch_num + batch_i, new_style=True)
 
         self.scheduler.step()
         # * print & write log for each epoch
@@ -357,26 +368,8 @@ class PTSRTrainer(Trainer):
             "lr_adam": round(self.optim_adam.param_groups[0]["lr"], 6),
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
         }
-
-        # MARK: Embedding Visualization
-        # metadata = [f"Item_{i}" for i in range(args.item_size)]
-        # args.tb.add_embedding(self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
-        # args.tb.add_embedding(self.model.all_item_emb, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
-        # metadata = [f"Subseq_{i}" for i in range(args.num_subseq_id)]
-        # args.tb.add_embedding(self.model.all_subseq_emb, metadata=metadata, tag="SubseqEmbeddings", global_step=epoch)
-
-        if (epoch + 1) % args.log_freq == 0:
-            loss_message = ""
-            for key, value in post_fix.items():
-                if "loss" in key:
-                    args.tb.add_scalar(f"train/{key}", value, epoch, new_style=True)
-                if isinstance(value, float):
-                    loss_message += f" | {key}: {value}"
-                else:
-                    loss_message += f"{key}: [{value:03}]"
-
-            loss_message += f" | Message: {args.save_name}"
-            args.logger.info(loss_message)
+        self.log(epoch, post_fix)
+        # self.emb_vis(epoch)
 
     # MARK: TEST
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
@@ -387,19 +380,22 @@ class PTSRTrainer(Trainer):
                 self.model.all_subseq_emb, self.model.all_item_emb = self.gcn(
                     self.graph.torch_A, self.model.subseq_embeddings.weight, self.model.item_embeddings.weight
                 )
-            for i, batch in tqdm(
+
+            test_desc = f"{args.save_name} | Device: {args.gpu_id} | Test Epoch {epoch}"
+
+            for batch_i, batch in tqdm(
                 enumerate(dataloader),
                 total=len(dataloader),
                 leave=False,
-                desc=f"{args.save_name} | Device: {args.gpu_id} | Test Epoch {epoch}",
+                desc=test_desc,
                 dynamic_ncols=True,
             ):
                 batch = tuple(t.to(self.device) for t in batch)
                 user_ids, input_ids, answers = batch
+
                 # * SHAPE: [Batch_size, Seq_len, Hidden_size] -> [256, 50, 64]
-                recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
                 # * Use the last item output. SHAPE: [Batch_size, Hidden_size] -> [256, 64]
-                # recommend_output = recommend_output[:, -1, :]  # [BxH]
+                recommend_output: Tensor = self.model(input_ids)  # [BxLxH]
 
                 # * Extension Task
                 if args.extend:
@@ -422,27 +418,10 @@ class PTSRTrainer(Trainer):
 
                 # * recommendation results. SHAPE: [Batch_size, Item_size]
                 rating_pred = self.model.predict_full(recommend_output[:, -1, :])
-                rating_pred = rating_pred.cpu().data.numpy().copy()
-                batch_user_index = user_ids.cpu().numpy()
 
-                # * 将已经有评分的 item 的预测评分设置为 0, 防止推荐已经评分过的 item
-                rating_pred[args.rating_matrix[batch_user_index].toarray() > 0] = 0
-                # * argpartition T: O(n)  argsort O(nlogn) | reference: https://stackoverflow.com/a/23734295, https://stackoverflow.com/a/20104162
-                # * Get the *index* of the largest 20 items, but its order is not sorted. SHAPE: [Batch_size, 20]
-                ind: np.ndarray = np.argpartition(rating_pred, -20)[:, -20:]
+                batch_pred_list = self.test_postprocess(rating_pred, user_ids)
 
-                # * np.arange(len(rating_pred): [0, 1, 2, ..., Batch_size-1]. SHAPE: [Batch_size]
-                # * np.arange(len(rating_pred))[:, None]: [[0], [1], [2], ..., [Batch_size-1]]. SHAPE: [Batch_size, 1]
-
-                # * Get the *value* of the largest 20 items. SHAPE: [Batch_size, 20]
-                arr_ind = rating_pred[np.arange(len(rating_pred))[:, None], ind]
-                # * Sort the largest 20 items's value to get the index. SHAPE: [Batch_size, 20]
-                # * ATTENTION: `arr_ind_argsort` is the index of the `ind`, not the index of the `rating_pred`
-                arr_ind_argsort = np.argsort(arr_ind)[np.arange(len(rating_pred)), ::-1]
-                # * Get the real Item ID of the largest 20 items. SHAPE: [Batch_size, 20]
-                batch_pred_list = ind[np.arange(len(rating_pred))[:, None], arr_ind_argsort]
-
-                if i == 0:
+                if batch_i == 0:
                     pred_list = batch_pred_list
                     answer_list = answers.cpu().data.numpy()
                 else:
@@ -450,6 +429,28 @@ class PTSRTrainer(Trainer):
                     answer_list = np.append(answer_list, answers.cpu().data.numpy(), axis=0)
 
             return self.get_full_sort_score(epoch, answer_list, pred_list, mode)
+
+    def test_postprocess(self, rating_pred, user_ids):
+        rating_pred = rating_pred.cpu().data.numpy().copy()
+        batch_user_index = user_ids.cpu().numpy()
+
+        # * 将已经有评分的 item 的预测评分设置为 0, 防止推荐已经评分过的 item
+        rating_pred[args.rating_matrix[batch_user_index].toarray() > 0] = 0
+        # * argpartition T: O(n)  argsort O(nlogn) | reference: https://stackoverflow.com/a/23734295, https://stackoverflow.com/a/20104162
+        # * Get the *index* of the largest 20 items, but its order is not sorted. SHAPE: [Batch_size, 20]
+        ind: np.ndarray = np.argpartition(rating_pred, -20)[:, -20:]
+
+        # * np.arange(len(rating_pred): [0, 1, 2, ..., Batch_size-1]. SHAPE: [Batch_size]
+        # * np.arange(len(rating_pred))[:, None]: [[0], [1], [2], ..., [Batch_size-1]]. SHAPE: [Batch_size, 1]
+
+        # * Get the *value* of the largest 20 items. SHAPE: [Batch_size, 20]
+        arr_ind = rating_pred[np.arange(len(rating_pred))[:, None], ind]
+        # * Sort the largest 20 items's value to get the index. SHAPE: [Batch_size, 20]
+        # * ATTENTION: `arr_ind_argsort` is the index of the `ind`, not the index of the `rating_pred`
+        arr_ind_argsort = np.argsort(arr_ind)[np.arange(len(rating_pred)), ::-1]
+        # * Get the real Item ID of the largest 20 items. SHAPE: [Batch_size, 20]
+        batch_pred_list = ind[np.arange(len(rating_pred))[:, None], arr_ind_argsort]
+        return batch_pred_list
 
     # MARK: 全局PAD预处理:
     def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
@@ -616,3 +617,13 @@ class PTSRTrainer(Trainer):
             test[tuple(seq)] = pad_prefix
 
         return valid, test
+
+    # 无效函数
+    def emb_vis(self, epoch):
+        metadata = [f"Item_{i}" for i in range(args.item_size)]
+        args.tb.add_embedding(
+            self.model.item_embeddings.weight, metadata=metadata, tag="ItemEmbeddings", global_step=epoch
+        )
+        args.tb.add_embedding(self.model.all_item_emb, metadata=metadata, tag="ItemEmbeddings", global_step=epoch)
+        metadata = [f"Subseq_{i}" for i in range(args.num_subseq_id)]
+        args.tb.add_embedding(self.model.all_subseq_emb, metadata=metadata, tag="SubseqEmbeddings", global_step=epoch)
