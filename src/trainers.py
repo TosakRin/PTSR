@@ -91,9 +91,6 @@ class Trainer:
         self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
 
-        # * prepare padding subseq for subseq embedding update
-        self.all_subseq, self.pad_mask, self.num_non_pad = self.get_all_pad_subseq(self.graph_dataloader)
-
         self.best_scores = {
             "valid": {
                 "Epoch": 0,
@@ -242,83 +239,40 @@ class Trainer:
             raise ValueError("Invalid scheduler")
         return scheduler
 
-    # MARK: 全局PAD预处理
-    def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
-        """collect all padding subsequence index and subsequence for updating subseq embeddings.
+    def train(self, epoch) -> None:
+        assert self.train_dataloader is not None
+        args.mode = "train"
+        self.train_epoch(epoch, self.train_dataloader)
 
-        Returns:
-            tuple[Tensor, Tensor, Tensor]:
-                - all_subseq_ids: subseq id for all_subseq.
-                - all_subseq: padding subseq (index, not embedding), e.g., [[0,0,1,2,3], [0,1,2,3,4], ...]
-                - pad_mask: valid subseq mask, e.g., [[False, False, True, True, True], [False, True, True, True, True], ...]
-                - num_non_pad: number of valid item in each subseq, e.g., [[3], [4], ...]
-        """
-        all_pad_subseq_path = f"../data/{args.data_name}_all_pad_subseq.pth"
-        if not osp.exists(all_pad_subseq_path):
-            all_subseq_ids = []
-            all_subseq = []
-            for _, (rec_batch) in tqdm(
-                enumerate(gcn_dataloader),
-                total=len(gcn_dataloader),
-                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
-                leave=False,
-                dynamic_ncols=True,
-            ):
-                subseq_id, _, subsequence, _, _, _ = rec_batch
-                all_subseq_ids.append(subseq_id)
-                all_subseq.append(subsequence)
-            all_subseq_ids = torch.cat(all_subseq_ids, dim=0)
-            all_subseq = torch.cat(all_subseq, dim=0)
+    def valid(self, epoch) -> tuple[list[float], str]:
+        assert self.eval_dataloader is not None
+        args.mode = "valid"
+        return self.full_test_epoch(epoch, self.eval_dataloader, "valid")
 
-            # * remove duplicate subsequence
-            tensor_np = all_subseq_ids.numpy()
-            _, indices = np.unique(tensor_np, axis=0, return_index=True)
-            sorted_indices = np.sort(indices)
-            all_subseq_ids = all_subseq_ids[sorted_indices]
-            all_subseq = all_subseq[sorted_indices]
-            # * check if ID is always increasing
-            # print(torch.all(torch.diff(all_subseq_ids) > 0))
-            # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
-            torch.save(all_subseq, all_pad_subseq_path)
-        else:
-            for _, (rec_batch) in tqdm(
-                enumerate(gcn_dataloader),
-                total=len(gcn_dataloader),
-                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
-                leave=False,
-                dynamic_ncols=True,
-            ):
-                continue
-            all_subseq = torch.load(all_pad_subseq_path)
-            all_subseq_ids = torch.arange(all_subseq.size(0))
-        # * pad_mask & num_non_pad: 用于计算 subseq embedding 的平均值
-        pad_mask = all_subseq > 0
-        num_non_pad = pad_mask.sum(dim=1, keepdim=True)
-        return all_subseq, pad_mask, num_non_pad
-
-    # MARK: Subseq 更新策略
-    def subseq_embed_update(self, epoch):
-        self.model.item_embeddings.cpu()
-        self.model.subseq_embeddings.cpu()
-        subseq_emb = self.model.item_embeddings(self.all_subseq)
-        subseq_emb_avg: Tensor = (
-            torch.sum(subseq_emb * self.pad_mask.unsqueeze(-1), dim=1) / self.num_non_pad
-        )  # todo: mean换linear
-        # * Three subseq embed update methods: 1. nn.Parameter 2. nn.Embedding 3. model.subseq_embeddings
-        # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
-        # self.model.subseq_embeddings = subseq_emb_avg
-
-        # * accelerate convergence
-        self.model.subseq_embeddings.weight.data = (
-            subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.subseq_embeddings.weight.data) / 2
-        )
-
-        self.model.item_embeddings.to(self.device)
-        self.model.subseq_embeddings.to(self.device)
+    def test(self, epoch, full_sort=False) -> tuple[list[float], str]:
+        args.mode = "test"
+        if full_sort:
+            return self.full_test_epoch(epoch, self.test_dataloader, "test")
+        return self.sample_test_epoch(epoch, self.test_dataloader)
 
 
+# MARK: PTSR
 class PTSRTrainer(Trainer):
 
+    def __init__(
+        self,
+        model: SASRecModel,
+        train_dataloader: DataLoader | None,
+        graph_dataloader: DataLoader | None,
+        eval_dataloader: DataLoader | None,
+        test_dataloader: DataLoader,
+    ) -> None:
+        super().__init__(model, train_dataloader, graph_dataloader, eval_dataloader, test_dataloader)
+
+        # * prepare padding subseq for subseq embedding update
+        self.all_subseq, self.pad_mask, self.num_non_pad = self.get_all_pad_subseq(self.graph_dataloader)
+
+    # MARK: Train
     def train_epoch(self, epoch, train_dataloader):
         self.model.train()
         if epoch == 0:
@@ -398,6 +352,7 @@ class PTSRTrainer(Trainer):
             loss_message += f" | Message: {args.save_name}"
             args.logger.info(loss_message)
 
+    # MARK: TEST
     def full_test_epoch(self, epoch: int, dataloader: DataLoader, mode):
         with torch.no_grad():
             self.model.eval()
@@ -451,19 +406,75 @@ class PTSRTrainer(Trainer):
 
             return self.get_full_sort_score(epoch, answer_list, pred_list, mode)
 
-    # MARK: 不要动的函数
-    def train(self, epoch) -> None:
-        assert self.train_dataloader is not None
-        args.mode = "train"
-        self.train_epoch(epoch, self.train_dataloader)
+    # MARK: 全局PAD预处理:
+    def get_all_pad_subseq(self, gcn_dataloader: DataLoader) -> tuple[Tensor, Tensor]:
+        """collect all padding subsequence index and subsequence for updating subseq embeddings.
 
-    def valid(self, epoch) -> tuple[list[float], str]:
-        assert self.eval_dataloader is not None
-        args.mode = "valid"
-        return self.full_test_epoch(epoch, self.eval_dataloader, "valid")
+        Returns:
+            tuple[Tensor, Tensor, Tensor]:
+                - all_subseq_ids: subseq id for all_subseq.
+                - all_subseq: padding subseq (index, not embedding), e.g., [[0,0,1,2,3], [0,1,2,3,4], ...]
+                - pad_mask: valid subseq mask, e.g., [[False, False, True, True, True], [False, True, True, True, True], ...]
+                - num_non_pad: number of valid item in each subseq, e.g., [[3], [4], ...]
+        """
+        all_pad_subseq_path = f"../data/{args.data_name}_all_pad_subseq.pth"
+        if not osp.exists(all_pad_subseq_path):
+            all_subseq_ids = []
+            all_subseq = []
+            for _, (rec_batch) in tqdm(
+                enumerate(gcn_dataloader),
+                total=len(gcn_dataloader),
+                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
+                leave=False,
+                dynamic_ncols=True,
+            ):
+                subseq_id, subsequence = rec_batch
+                all_subseq_ids.append(subseq_id)
+                all_subseq.append(subsequence)
+            all_subseq_ids = torch.cat(all_subseq_ids, dim=0)
+            all_subseq = torch.cat(all_subseq, dim=0)
 
-    def test(self, epoch, full_sort=False) -> tuple[list[float], str]:
-        args.mode = "test"
-        if full_sort:
-            return self.full_test_epoch(epoch, self.test_dataloader, "test")
-        return self.sample_test_epoch(epoch, self.test_dataloader)
+            # * remove duplicate subsequence
+            tensor_np = all_subseq_ids.numpy()
+            _, indices = np.unique(tensor_np, axis=0, return_index=True)
+            sorted_indices = np.sort(indices)
+            all_subseq_ids = all_subseq_ids[sorted_indices]
+            all_subseq = all_subseq[sorted_indices]
+            # * check if ID is always increasing
+            # print(torch.all(torch.diff(all_subseq_ids) > 0))
+            # id_padded_subseq_map = dict(zip(all_subseq_ids, all_subseq))
+            torch.save(all_subseq, all_pad_subseq_path)
+        else:
+            for _, (rec_batch) in tqdm(
+                enumerate(gcn_dataloader),
+                total=len(gcn_dataloader),
+                desc=f"{args.save_name} | Device: {args.gpu_id} | get_all_pad_subseq",
+                leave=False,
+                dynamic_ncols=True,
+            ):
+                continue
+            all_subseq = torch.load(all_pad_subseq_path)
+            all_subseq_ids = torch.arange(all_subseq.size(0))
+        # * pad_mask & num_non_pad: 用于计算 subseq embedding 的平均值
+        pad_mask = all_subseq > 0
+        num_non_pad = pad_mask.sum(dim=1, keepdim=True)
+        return all_subseq, pad_mask, num_non_pad
+
+    # MARK: Subseq更新策略: Mean Item
+    def subseq_embed_update(self, epoch):
+        self.model.item_embeddings.cpu()
+        self.model.subseq_embeddings.cpu()
+        subseq_emb = self.model.item_embeddings(self.all_subseq)
+        subseq_emb_avg: Tensor = torch.sum(subseq_emb * self.pad_mask.unsqueeze(-1), dim=1) / self.num_non_pad
+        # * Three subseq embed update methods: 1. nn.Parameter 2. nn.Embedding 3. model.subseq_embeddings
+        # self.model.subseq_embeddings = nn.Parameter(subseq_emb_avg)
+        # self.model.subseq_embeddings = subseq_emb_avg
+
+        # * accelerate convergence
+        self.model.subseq_embeddings.weight.data = (
+            subseq_emb_avg if epoch == 0 else (subseq_emb_avg + self.model.subseq_embeddings.weight.data) / 2
+        )
+
+        self.model.item_embeddings.to(self.device)
+        self.model.subseq_embeddings.to(self.device)
+
