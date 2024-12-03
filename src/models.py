@@ -25,7 +25,7 @@ class SASRecModel(nn.Module):
         self.all_item_emb: Tensor = torch.zeros(args.item_size, args.hidden_size)
         self.adagrad_params = [self.item_embeddings.weight]
         self.adam_params = [p for n, p in self.named_parameters() if n != "item_embeddings.weight"]
-        self.prefix_encoder = Encoder()
+        self.prefix_encoder = Encoder(1)
         self.item_encoder = Encoder()
         self.LayerNorm = LayerNorm(args.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(args.hidden_dropout_prob)

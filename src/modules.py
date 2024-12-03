@@ -223,10 +223,10 @@ class Layer(nn.Module):
 class Encoder(nn.Module):
     """Encoder: a stack of N layers."""
 
-    def __init__(self):
+    def __init__(self, num_hidden_layer=args.num_hidden_layers):
         super().__init__()
         layer = Layer()
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(args.num_hidden_layers)])
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(num_hidden_layer)])
 
     def forward(self, hidden_states: Tensor, attention_mask: Tensor, output_all_encoded_layers=True) -> list[Tensor]:
         """
