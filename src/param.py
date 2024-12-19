@@ -93,6 +93,7 @@ def parse_args() -> argparse.Namespace:
 
     # * Extend
     parser.add_argument("--extend", action="store_true", help="do extend task")
+    parser.add_argument("--a", type=float, default=0.5)
 
     return parser.parse_args()
 

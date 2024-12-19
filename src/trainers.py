@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 def do_train(trainer, valid_rating_matrix, test_rating_matrix):
     pprint_color(">>> Train PTSR Start")
     early_stopping = EarlyStopping(args.checkpoint_path, args.latest_path, patience=50)
+    # trainer.load("/home/cjy/proj/paper2/PTSR/ckpt/1201161425-Beauty-回归性原理_写完改动看看能否还原.pt")
     for epoch in range(args.epochs):
         args.rating_matrix = valid_rating_matrix
         trainer.train(epoch)
@@ -292,7 +293,8 @@ class PTSRTrainer(Trainer):
         # * 所以要对这个 ID 列表做 Padding
         def get_id_pad(dic, length=50):
             return {
-                k: np.pad(v, (max(0, length - len(v)), 0), mode="constant", constant_values=0)[-length:]
+                # k: np.pad(v, (max(0, length - len(v)), 0), mode="constant", constant_values=0)[-length:]
+                k: np.pad(v, (0, max(0, length - len(v))), mode="constant", constant_values=0)[-length:]
                 for k, v in dic.items()
             }
 
@@ -348,11 +350,19 @@ class PTSRTrainer(Trainer):
 
             if args.extend:
                 prefix = query_prefix(self.id_pad_prefix_map, subseq_ids)
-                intent_output = self.model.forward_p(prefix, sp=intent_output[:, -1, :])
+                # intent_output = torch.cat(
+                #     (intent_output, self.model.forward_p(prefix, sp=intent_output[:, -1, :])), dim=2
+                # )
+                intent_output = intent_output + args.a * self.model.forward_p(prefix, sp=intent_output[:, -1, :])
 
             # * predict & loss
             logits = self.model.predict_full(intent_output[:, -1, :])
             rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
+
+            # * logits: [256, 50, 12103]
+            # * gt_ids: [256, 50, ]
+            # logits = self.model.predict_full(intent_output)
+            # rec_loss = nn.CrossEntropyLoss()(logits.reshape(-1, logits.shape[-1]), gt_ids.reshape(-1))
 
             self.optim_adam.zero_grad()
             rec_loss.backward()
@@ -414,7 +424,12 @@ class PTSRTrainer(Trainer):
                         .squeeze(1)
                         .to(self.device)
                     )
-                    recommend_output = self.model.forward_p(prefix, sp=recommend_output[:, -1, :])
+                    # recommend_output = torch.cat(
+                    #     (recommend_output, self.model.forward_p(prefix, sp=recommend_output[:, -1, :])), dim=2
+                    # )
+                    recommend_output = recommend_output + args.a * self.model.forward_p(
+                        prefix, sp=recommend_output[:, -1, :]
+                    )
 
                 # * recommendation results. SHAPE: [Batch_size, Item_size]
                 rating_pred = self.model.predict_full(recommend_output[:, -1, :])
@@ -596,7 +611,8 @@ class PTSRTrainer(Trainer):
                     # 计算需要补充0的数量
                     padding_size = l - len(arr)
                     # 使用np.pad进行填充
-                    padded_arr = np.pad(arr, (padding_size, 0), "constant", constant_values=(0, 0))
+                    # padded_arr = np.pad(arr, (padding_size, 0), "constant")
+                    padded_arr = np.pad(arr, (0, padding_size), "constant")
 
                 padded_arrays.append(padded_arr)
 

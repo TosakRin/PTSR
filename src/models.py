@@ -83,10 +83,19 @@ class SASRecModel(nn.Module):
         Returns:
             tensor: TRM 最后一层的输出. SHAPE: [batch_size, seq_length, hidden_size], e.g. [256, 50, 64]
         """
-        prefix_embeddings = self.all_subseq_emb[input_ids]
-        prefix_embeddings[:, 0, :] = sp
-        extended_attention_mask = self.get_pad_mask(input_ids)
-        # sequence_emb = self.add_position_embedding(input_ids, prefix_embeddings)
+        prefix_embeddings = self.subseq_embeddings(input_ids)
+        batch_size, seq_length = input_ids.shape
+        first_zero_indices = (input_ids == 0).int().argmax(dim=1)
+        mask = torch.arange(seq_length, device=input_ids.device).expand(
+            batch_size, seq_length
+        ).cuda() == first_zero_indices.unsqueeze(-1)
+        mask = mask.unsqueeze(-1).expand_as(prefix_embeddings)
+        prefix_embeddings[mask] = sp.unsqueeze(1).expand(-1, seq_length, -1)[mask]
+
+        extended_attention_mask = self.get_extend_mask(input_ids)
+        # prefix_embeddings = self.add_position_embedding(input_ids, prefix_embeddings)
+        # prefix_embeddings = self.dropout(self.LayerNorm(prefix_embeddings))
+
         item_encoded_layers = self.prefix_encoder(
             prefix_embeddings, extended_attention_mask, output_all_encoded_layers=True
         )
@@ -109,6 +118,43 @@ class SASRecModel(nn.Module):
         pad_mask = pad_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         pad_mask = (1.0 - pad_mask) * -10000.0
         return pad_mask
+
+    def get_extend_mask(self, input_ids: Tensor):
+        # * Shape: [batch_size, seq_length]
+        batch_size, seq_length = input_ids.shape
+
+        # 创建基础的attention mask，其中非零元素表示有效位置
+        attention_mask = (input_ids > 0).long()
+
+        # 找到每个序列中第一个0出现的位置
+        first_zero_indices = (input_ids == 0).int().argmax(dim=1)
+        # 如果没有0，则设置为seq_length，这样就不会影响mask
+        first_zero_indices[first_zero_indices == 0] = seq_length
+
+        # 根据第一个0的位置更新attention mask
+        for i in range(batch_size):
+            if first_zero_indices[i] < seq_length:
+                attention_mask[i, first_zero_indices[i] :] = 0  # mask掉从第一个0开始及其之后的所有位置
+
+        # * Shape: [batch_size, 1, 1, seq_length]
+        extended_attention_mask: Tensor = attention_mask.unsqueeze(1).unsqueeze(2)  # torch.int64
+        max_len: int = attention_mask.size(-1)
+        attn_shape = (1, max_len, max_len)
+
+        subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1)  # torch.uint8
+        # * shape: [1, 1, seq_length, seq_length]
+        subsequent_mask = (subsequent_mask == 0).unsqueeze(1)
+        subsequent_mask = subsequent_mask.long()
+
+        if args.cuda_condition:
+            subsequent_mask = subsequent_mask.cuda()
+
+        # * Hadamand product and boardcast
+        # * mask SHAPE: [batch_size, 1, seq_length, seq_length]
+        extended_attention_mask = extended_attention_mask * subsequent_mask
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        return extended_attention_mask
 
     def get_item_embeddings(self, input_ids: Tensor):
         if args.gcn_mode != "None":
