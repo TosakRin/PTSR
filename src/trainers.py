@@ -39,7 +39,7 @@ def do_train(trainer, valid_rating_matrix, test_rating_matrix):
         args.rating_matrix = valid_rating_matrix
         trainer.train(epoch)
         # * evaluate on NDCG@20
-        if args.do_eval:
+        if args.do_eval and epoch >= args.min_test_epoch:
             scores, _ = trainer.valid(epoch)
             early_stopping(np.array(scores[-1:]), trainer.model)
             if early_stopping.early_stop:
@@ -287,6 +287,7 @@ class PTSRTrainer(Trainer):
         # * prepare padding subseq for subseq embedding update
         self.all_subseq, self.pad_mask, self.num_non_pad = self.get_all_pad_subseq(self.graph_dataloader)
         self.id_prefix_map, self.id_prefixid_map = self.get_train_prefix_sub(self.graph_dataloader)
+        self.loss_func = nn.CrossEntropyLoss()
 
         # * self.id_prefixid_map: key 是输入的 prefix, value 是该 prefix 的子序列的 ID 列表
         # * 训练/预测时, 通过这个 map 应该能直接获得已经 padding 的子序列 ID 列表
@@ -310,6 +311,8 @@ class PTSRTrainer(Trainer):
             self.graph.torch_A = self.graph.get_torch_adj(train_matrix)
 
         rec_avg_loss = 0.0
+        cl_avg_loss = 0.0
+        avg_loss = 0.0
         batch_num = len(train_dataloader)
         args.tb.add_scalar("train/LR", self.optim_adam.param_groups[0]["lr"], epoch, new_style=True)
 
@@ -357,18 +360,19 @@ class PTSRTrainer(Trainer):
 
             # * predict & loss
             logits = self.model.predict_full(intent_output[:, -1, :])
-            rec_loss = nn.CrossEntropyLoss()(logits, gt_ids[:, -1])
-
+            rec_loss = self.loss_func(logits, gt_ids[:, -1])
             # * logits: [256, 50, 12103]
             # * gt_ids: [256, 50, ]
             # logits = self.model.predict_full(intent_output)
             # rec_loss = nn.CrossEntropyLoss()(logits.reshape(-1, logits.shape[-1]), gt_ids.reshape(-1))
 
             self.optim_adam.zero_grad()
-            rec_loss.backward()
+            loss.backward()
             self.optim_adam.step()
 
             rec_avg_loss += rec_loss.item()
+            cl_avg_loss += cl_loss.item()
+            avg_loss += loss.item()
 
         self.scheduler.step()
         # * print & write log for each epoch
@@ -377,6 +381,8 @@ class PTSRTrainer(Trainer):
             "Epoch": epoch,
             "lr_adam": round(self.optim_adam.param_groups[0]["lr"], 6),
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
+            "cl_avg_loss": round(cl_avg_loss / batch_num, 4),
+            "avg_loss": round(avg_loss / batch_num, 4),
         }
         self.log(epoch, post_fix)
         # self.emb_vis(epoch)
