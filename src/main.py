@@ -43,6 +43,7 @@ def set_datapath() -> None:
     # # * other data path for sen
     # else:
     args.subseqs_path = f"{args.data_dir}{args.data_name}_subseq_{args.subseq_len}.txt"
+    # args.subseqs_path = args.seqs_path    # 使用原始序列
     args.target_subseqs_path = f"{args.data_dir}{args.data_name}_t_{args.subseq_len}.pkl"
     args.graph_path = f"{args.data_dir}{args.data_name}_graph_{args.subseq_len}.pkl"
 

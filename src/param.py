@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_dir", default="../data/", type=str, help="data directory")
     parser.add_argument("--output_dir", default="../ckpt", type=str, help="checkpoint directory")
     parser.add_argument(
-        "--log_root", default=".", type=str, help="log root directory, includding log files and tensorboard files"
+        "--log_root", default="logs", type=str, help="log root directory, includding log files and tensorboard files"
     )
     parser.add_argument("--log_dir", default="logs", type=str, help="log directory in log_root")
     parser.add_argument("--tb_dir", default="runs", type=str, help="tensorboard directory in log_root")
@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subseq_len", default=50, type=int)
 
     # * train args
-    parser.add_argument("--lr_adam", type=float, default=0.001, help="learning rate of adam")
+    parser.add_argument("--lr", type=float, default=0.001, help="learning rate of adam")
     parser.add_argument("--batch_size", type=int, default=256, help="number of batch_size")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--no_cuda", action="store_true")
@@ -65,12 +65,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warm_up_epochs", default=5, type=int, help="epoch number of warm up")
     parser.add_argument("--do_test", action="store_true", help="do test simultaneously with training")
     parser.add_argument("--min_test_epoch", default=0, type=int, help="minimum epoch number to begin testing")
-    parser.add_argument("--scheduler", default="None", type=str, help="scheduler")
+    parser.add_argument("--scheduler", default="warmup+multistep", type=str, help="scheduler")
     parser.add_argument("--gamma", default=0.1, type=float, help="gamma for MultiStepLR")
-    parser.add_argument("--milestones", nargs="?", default="[50,75,100]", help="milestones for MultiStepLR")
+    parser.add_argument("--milestones", nargs="?", default="[25,50,100]", help="milestones for MultiStepLR")
 
     # * GNN
-    parser.add_argument("--gnn_layer", default=2, type=int, help="number of gnn layers")
+    parser.add_argument("--gnn_layer", default=4, type=int, help="number of gnn layers")
     parser.add_argument(
         "--gcn_mode", type=str, default="None", help="gcn mode", choices=["None", "global", "batch", "batch_gcn"]
     )
@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_loss", action="store_true", help="TensorBoard record batch loss")
     parser.add_argument(
         "--loader_type",
-        default="None",
+        default="new",
         choices=["new", "old"],
         type=str,
         help="dataloader mode, new for more efficient way and old for vanilla way.",

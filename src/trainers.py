@@ -90,7 +90,7 @@ class Trainer:
             test_dataloader,
         )
 
-        self.optim_adam = AdamW(self.model.parameters(), lr=args.lr_adam, weight_decay=args.weight_decay)
+        self.optim_adam = AdamW(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = self.get_scheduler(self.optim_adam)
 
         self.best_scores = {
@@ -379,7 +379,7 @@ class PTSRTrainer(Trainer):
         # * post_fix: print the average loss of the epoch
         post_fix = {
             "Epoch": epoch,
-            "lr_adam": round(self.optim_adam.param_groups[0]["lr"], 6),
+            "lr": round(self.optim_adam.param_groups[0]["lr"], 6),
             "rec_avg_loss": round(rec_avg_loss / batch_num, 4),
             "cl_avg_loss": round(cl_avg_loss / batch_num, 4),
             "avg_loss": round(avg_loss / batch_num, 4),
