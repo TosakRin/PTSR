@@ -83,12 +83,15 @@ $ tree ../data
 ## Training/Testing
 
 ```sh
-python main.py --data_name Beauty --do_test --do_eval --scheduler warmup+multistep --milestones "[25, 50]" --gamma 0.1 --warm_up_epochs 5 --loader_type new --gcn_mode batch --gpu_id 0 --log_root logs --gnn_layer 4 --msg training
+# Beauty/Toys/Sports
+python main.py --data_name Beauty --do_test --do_eval --gpu_id 0 --msg YOUR_MSG
+
+# ml-1m
+python main.py --data_name ml-1m --hidden_dropout_prob 0.1 --do_test --do_eval --gpu_id 0 --msg YOUR_MSG
 ```
 
 - `data_name`: Beauty/Sports/Toys/ml-1m.
 - `gpu_id`: Device ID.
-- `log_root`: Root directory for python logging & TensorBoard.
 - `msg`: Custom message dentifiers for console output & log file.
 
 ## Acknowledgment
