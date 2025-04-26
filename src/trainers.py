@@ -367,12 +367,12 @@ class PTSRTrainer(Trainer):
             # rec_loss = nn.CrossEntropyLoss()(logits.reshape(-1, logits.shape[-1]), gt_ids.reshape(-1))
 
             self.optim_adam.zero_grad()
-            loss.backward()
+            rec_loss.backward()
             self.optim_adam.step()
 
             rec_avg_loss += rec_loss.item()
-            cl_avg_loss += cl_loss.item()
-            avg_loss += loss.item()
+            # cl_avg_loss += cl_loss.item()
+            # avg_loss += loss.item()
 
         self.scheduler.step()
         # * print & write log for each epoch
